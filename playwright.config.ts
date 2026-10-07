@@ -14,9 +14,10 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: /visual\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
-    ...(!process.env.CI || process.env.VISUAL_TESTS === "1"
+    ...(process.env.VISUAL_TESTS === "1"
       ? [
           {
             name: "visual",
