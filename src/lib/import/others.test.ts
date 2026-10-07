@@ -57,6 +57,21 @@ describe("generic csv", () => {
   });
 });
 
+describe("generic csv rating scale", () => {
+  const mk = (text: string) => [{ name: "r.csv", text: async () => text, bytes: async () => new TextEncoder().encode(text) }];
+  it("uses one scale per file and records episode ratings", async () => {
+    const b = await importCsv(mk("title,type,rating\nA,movie,4.5\nB,movie,5\nC,movie,3\n"));
+    expect(b.items.map((i) => i.rating)).toEqual([9, 10, 6]);
+    const e = await importCsv(mk("title,season,episode,rating\nShow,1,2,4.5\nShow,1,3,5\n"));
+    expect(e.episodeRatings).toEqual([
+      { showIds: {}, showTitle: "Show", season: 1, number: 2, rating: 9 },
+      { showIds: {}, showTitle: "Show", season: 1, number: 3, rating: 10 },
+    ]);
+    const t = await importCsv(mk("title,type,rating\nA,movie,7\nB,movie,10\n"));
+    expect(t.items.map((i) => i.rating)).toEqual([7, 10]);
+  });
+});
+
 describe("registry", () => {
   it("covers all sources", () => {
     expect(Object.keys(IMPORTERS).sort()).toEqual(["csv", "episodic", "imdb", "letterboxd", "simkl", "trakt", "tvtime"]);

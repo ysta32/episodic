@@ -68,20 +68,22 @@ function mapKind(s: string | undefined, hasEpisode: boolean): MediaKind {
   return "movie";
 }
 
-/** Normalize a rating on an unknown scale (0-5 stars, 0-10, 0-100) to 1..10. */
-function normRating(n: number | undefined): number | undefined {
-  if (n === undefined || n <= 0) return undefined;
-  let r = n;
-  if (n > 10) r = n / 10;
-  else if (n <= 5 && !Number.isInteger(n)) r = n * 2;
-  return Math.min(10, Math.max(1, Math.round(r)));
+/** Multiplier for a file's rating scale, inferred from the max rating: <=5 stars -> x2, <=10 as-is, <=100 -> /10. */
+function scaleFor(max: number): number {
+  if (max <= 5) return 2;
+  if (max <= 10) return 1;
+  return 0.1;
 }
+const applyScale = (n: number | undefined, k: number): number | undefined =>
+  n === undefined || n <= 0 ? undefined : Math.min(10, Math.max(1, Math.round(n * k)));
 
 export const importCsv: Importer = async (files) => {
   const b: ImportBundle = emptyBundle("csv");
   let skipped = 0;
   for (const f of files) {
     const rows = parseRows(await f.text());
+    const maxRating = rows.reduce((m, r) => Math.max(m, parseNum(pick(r, ["rating", "yourrating", "score"])) ?? 0), 0);
+    const k = scaleFor(maxRating);
     for (const row of rows) {
       const title = pick(row, ["title", "name", "showtitle", "show", "movie"]);
       const imdbRaw = pick(row, ["imdb", "imdbid", "imdbconst", "const"]);
@@ -98,11 +100,12 @@ export const importCsv: Importer = async (files) => {
       const kind = mapKind(pick(row, ["type", "kind", "titletype", "mediatype"]), isEp);
       const year = parseIntOpt(pick(row, ["year"]));
       const watchedAt = parseDate(pick(row, ["watchedat", "watcheddate", "date", "daterated", "datewatched"]));
-      const rating = normRating(parseNum(pick(row, ["rating", "yourrating", "score"])));
+      const rating = applyScale(parseNum(pick(row, ["rating", "yourrating", "score"])), k);
       const status = mapStatus(pick(row, ["status", "state", "list"]));
       const name = title ?? imdbRaw ?? "";
       if (isEp) {
         b.watches.push({ kind: "episode", title: name, year, ids, season, number, watchedAt });
+        if (rating !== undefined) b.episodeRatings.push({ showIds: ids, showTitle: name, season, number, rating });
         continue;
       }
       const item: ImportedItem = { kind, title: name, year, ids };
