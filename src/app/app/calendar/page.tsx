@@ -59,17 +59,29 @@ export default function CalendarPage() {
     }
     let live = true;
     const now = new Date();
-    clientProvider()
-      .schedule(ids, key(shift(now, -PAST)), key(shift(now, AHEAD)))
+    const from = key(shift(now, -PAST));
+    const to = key(shift(now, AHEAD));
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
+    Promise.all(chunks.map((c) => clientProvider().schedule(c, from, to)))
+      .then((parts) => parts.flat())
       .then((eps) => {
         if (!live) return;
         setError(false);
         setEpisodes(eps);
       })
-      .catch(() => {
+      .catch(async () => {
+        // Offline or TVmaze down: fall back to episodes already saved on this device.
+        const wanted = new Set(ids);
+        let saved: Episode[] = [];
+        try {
+          saved = await db().episodes.where("airdate").between(from, to, true, true).filter((e) => wanted.has(e.showId)).toArray();
+        } catch {
+          saved = [];
+        }
         if (!live) return;
         setError(true);
-        setEpisodes((prev) => prev ?? []);
+        setEpisodes(saved);
       });
     return () => {
       live = false;

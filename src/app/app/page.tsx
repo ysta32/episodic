@@ -6,7 +6,7 @@ import { ActionLink, ErrorBanner, FirstRun } from "@/components/app/EmptyState";
 import { slate, UpNextCard } from "@/components/app/UpNextCard";
 import { EmptyState, LoadingRegion, Skeleton, useToast } from "@/components/ui";
 import { db } from "@/lib/db";
-import { markWatched, unmarkWatched, upNext, type UpNextItem } from "@/lib/library";
+import { markWatched, upNext, type UpNextItem } from "@/lib/library";
 
 function UpNextSkeletons() {
   return (
@@ -34,9 +34,18 @@ export default function UpNextPage() {
   const [stamped, setStamped] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const listRef = useRef<HTMLUListElement>(null);
-  const timer = useRef<number | undefined>(undefined);
+  const timers = useRef<Map<string, number>>(new Map());
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    const t = timers.current;
+    return () => t.forEach((h) => window.clearTimeout(h));
+  }, []);
+
+  const cancelTimer = (id: string) => {
+    const h = timers.current.get(id);
+    if (h !== undefined) window.clearTimeout(h);
+    timers.current.delete(id);
+  };
 
   const hide = (id: string, on: boolean) =>
     setGone((prev) => {
@@ -52,22 +61,24 @@ export default function UpNextPage() {
       setFailed(false);
       setStamped(id);
       // Optimistic: let the phosphor stamp play, then drop the card while the write lands.
-      timer.current = window.setTimeout(() => hide(id, true), 260);
+      const at = Date.now();
+      timers.current.set(id, window.setTimeout(() => { timers.current.delete(id); hide(id, true); }, 260));
       try {
-        await markWatched([id]);
+        await markWatched([id], at);
         toast({
           title: `Marked ${slate(item.next.season, item.next.number)} watched`,
           description: item.show.title,
           tone: "success",
           undo: () => {
-            unmarkWatched(id).then(
+            cancelTimer(id);
+            db().watches.where("mediaId").equals(id).and((w) => w.watchedAt === at).delete().then(
               () => hide(id, false),
               () => toast({ title: "Couldn't undo that", description: "It's still marked watched. Try again from the episode page.", tone: "danger" }),
             );
           },
         });
       } catch {
-        window.clearTimeout(timer.current);
+        cancelTimer(id);
         hide(id, false);
         setFailed(true);
         toast({ title: "Couldn't save that", description: "Nothing changed. Your library is fine.", tone: "danger" });
