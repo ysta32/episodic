@@ -8,6 +8,7 @@ export interface ImportedItem {
   ids: ExternalIds;
   status?: TrackStatus;
   rating?: number; // normalized to 1..10
+  favorite?: boolean;
   addedAt?: number;
 }
 export interface ImportedWatch {

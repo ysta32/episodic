@@ -12,7 +12,7 @@ export interface ExternalIds {
 }
 
 export interface Show {
-  id: string; // "tvmaze:<n>" or "tmdb:<n>" — canonical key
+  id: string; // ALWAYS "tvmaze:<n>" (D-08). Movies use "tmdb:<n>" or "imdb:tt..", so ids never collide.
   kind: "show";
   title: string;
   year?: number;
