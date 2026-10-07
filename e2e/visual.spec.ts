@@ -25,8 +25,7 @@ for (const width of [375, 1280]) {
         deviceScaleFactor: 1,
       });
 
-      test.beforeEach(async ({ page }, testInfo) => {
-        test.skip(testInfo.project.name !== "visual", "Visual project only");
+      test.beforeEach(async ({ page }) => {
         await page.addInitScript((selectedTheme) => {
           document.addEventListener("DOMContentLoaded", () => {
             document.documentElement.dataset.theme = selectedTheme;
