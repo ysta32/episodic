@@ -39,7 +39,7 @@ export function ReactionBar({ counts, mine, onPick, disabled, shielded }: Reacti
         <h2 id="reactions-h" className="k-slate text-text-2">How did it land?</h2>
         <span className="k-tabular text-k-xs text-text-3">{total === 1 ? "1 reaction" : `${total} reactions`}</span>
       </div>
-      <div role="group" aria-label="Your reaction" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div role="group" aria-label="Your reaction" className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6 lg:grid-cols-3">
         {REACTIONS.map((r) => {
           const on = mine === r;
           return (

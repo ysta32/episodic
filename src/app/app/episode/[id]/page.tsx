@@ -7,7 +7,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { isWatched, markWatched, parseEpisodeId, unmarkWatched } from "@/lib/library";
 import { getSettings } from "@/lib/lists";
-import { Badge, Button, Icon, Kbd, Skeleton, ToastProvider, useToast } from "@/components/ui";
+import { Badge, Button, Icon, Kbd, Skeleton, useToast } from "@/components/ui";
 import { ReactionBar } from "@/components/app/ReactionBar";
 import { Thread, useThread } from "@/components/app/Thread";
 import { getIdentity, type Identity } from "@/components/app/identity";
@@ -156,7 +156,7 @@ function EpisodeView({ episodeId }: { episodeId: string }) {
               counts={data.counts}
               mine={data.mine}
               shielded={!isWatchedNow && (settings?.spoilerMode ?? "blur") !== "show"}
-              disabled={!identity || !data.online || data.status === "loading"}
+              disabled={!identity || data.reacting || !data.online || data.status === "loading"}
               onPick={(r) => {
                 void data.react(r).then((err) => {
                   if (err) toast({ title: "Reaction not saved", description: err, tone: "danger" });
@@ -173,8 +173,6 @@ function EpisodeView({ episodeId }: { episodeId: string }) {
 export default function EpisodePage() {
   const { id } = useParams<{ id: string }>();
   return (
-    <ToastProvider>
-      <EpisodeView episodeId={safeDecode(id)} />
-    </ToastProvider>
+    <EpisodeView episodeId={safeDecode(id)} />
   );
 }

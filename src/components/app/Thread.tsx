@@ -86,6 +86,7 @@ export interface ThreadData {
   counts: ReactionCounts | null;
   mine: Reaction | null;
   hasMore: boolean;
+  reacting: boolean;
   loadingMore: boolean;
   online: boolean;
   reload: () => void;
@@ -106,18 +107,23 @@ export function useThread(episodeId: string, identity: Identity | null): ThreadD
   const [nextBefore, setNextBefore] = useState<number | undefined>();
   const [loadingMore, setLoadingMore] = useState(false);
   const [online, setOnline] = useState(true);
+  const [reacting, setReacting] = useState(false);
   const [tick, setTick] = useState(0);
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(new Set());
   const url = `/api/threads/${encodeURIComponent(episodeId)}`;
 
   useEffect(() => {
-    const sync = () => setOnline(navigator.onLine);
-    sync();
-    window.addEventListener("online", sync);
-    window.addEventListener("offline", sync);
+    const goOnline = () => {
+      setOnline(true);
+      setTick((t) => t + 1);
+    };
+    const goOffline = () => setOnline(false);
+    setOnline(navigator.onLine);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
     return () => {
-      window.removeEventListener("online", sync);
-      window.removeEventListener("offline", sync);
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
     };
   }, []);
 
@@ -180,7 +186,8 @@ export function useThread(episodeId: string, identity: Identity | null): ThreadD
 
   const react = useCallback(
     async (r: Reaction): Promise<string | null> => {
-      if (!identity || mine === r) return null;
+      if (!identity || mine === r || reacting) return null;
+      setReacting(true);
       const prevMine = mine;
       const prevCounts = counts;
       setMine(r);
@@ -191,6 +198,7 @@ export function useThread(episodeId: string, identity: Identity | null): ThreadD
         return next;
       });
       const rollback = (msg: string) => {
+        setReacting(false);
         setMine(prevMine);
         setCounts(prevCounts);
         return msg;
@@ -206,12 +214,13 @@ export function useThread(episodeId: string, identity: Identity | null): ThreadD
         if (!server) return rollback("Couldn't save your reaction. It's not lost; try again.");
         setCounts(server.reactions);
         writeJson(mineKey(episodeId), r);
+        setReacting(false);
         return null;
       } catch {
         return rollback("Reactions need a connection. Try again when you're back online.");
       }
     },
-    [identity, mine, counts, url, episodeId],
+    [identity, mine, counts, reacting, url, episodeId],
   );
 
   const post = useCallback(
@@ -288,7 +297,7 @@ export function useThread(episodeId: string, identity: Identity | null): ThreadD
   );
 
   return {
-    status, comments, counts, mine, hasMore: nextBefore !== undefined, loadingMore, online,
+    status, comments, counts, mine, reacting, hasMore: nextBefore !== undefined, loadingMore, online,
     reload, loadOlder, react, post, report, hide, unhide, hiddenIds,
   };
 }
@@ -431,7 +440,7 @@ export function Thread({ data, identity, watched, spoilerMode, onToast }: Thread
     const res = await data.post({ body: text, spoiler, gif: gif ?? undefined });
     setBusy(false);
     if (res.ok) {
-      setBody("");
+      setBody((cur) => (cur.trim() === text ? "" : cur));
       setGif(null);
       setSpoiler(false);
       setGifOpen(false);
@@ -466,6 +475,7 @@ export function Thread({ data, identity, watched, spoilerMode, onToast }: Thread
         <p role="status" className="flex items-center gap-2 rounded-k-sm border border-line bg-surface-2 px-3 py-2 text-k-sm text-text-2">
           <Icon name="offline" size={16} />
           Reactions need a connection. Cached posts are read-only.
+          <button type="button" onClick={data.reload} className="ml-auto min-h-11 rounded-k-sm px-2 font-semibold text-text hover:underline">Retry</button>
         </p>
       )}
 
