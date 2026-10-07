@@ -1,0 +1,7 @@
+entity_type,type,series_name,movie_name,episode_season_number,episode_number,series_tvdb_id,episode_tvdb_id,tvdb_id,imdb_id,release_date,created_at,new_field
+episode,watch,Dark,,1,2,334824,6551632,,,,2018-12-02 08:00:00,z
+episode,watch,Dark,,1,1,334824,6551631,,,,2018-11-30 08:00:00,z
+movie,watch,,Inception,,,,,1530,tt1375666,2010-07-16,2015-06-01 20:00:00,z
+movie,towatch,,"Crouching Tiger, Hidden Dragon",,,,,,tt0190332,2000-07-06,2021-04-04 12:00:00,z
+movie,watch,,,,,,,,,,2021-04-04 12:00:00,z
+podcast,watch,Some Pod,,,,,,,,,2021-04-04 12:00:00,z
