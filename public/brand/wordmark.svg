@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="76" viewBox="0 0 260 76" role="img" aria-labelledby="title desc">
+  <title id="title">Episodic</title>
+  <desc id="desc">Episodic in original outlined editorial lettering.</desc>
+  <g fill="currentColor" fill-rule="evenodd">
+    <path transform="translate(0 0)" d="M2 12H31L32 23H29Q27 15 20 15H12V30H18Q23 30 24 25H26V38H24Q23 33 18 33H12V50H21Q29 50 31 41H34L32 53H2V50L6 49V16L2 15Z"/>
+    <path transform="translate(36 0)" d="M2 27L12 24V29Q16 24 22 24C38 24 38 54 22 54Q16 54 12 50V64L17 65V68H2V65L6 64V31L2 30ZM12 34V45Q15 51 21 51C31 51 31 28 21 28Q15 28 12 34Z"/>
+    <path transform="translate(73 0)" d="M6 15A4 4 0 1 0 14 15A4 4 0 1 0 6 15ZM2 28L13 24V49L17 50V53H2V50L7 49V31L2 30Z"/>
+    <path transform="translate(93 0)" d="M26 25V34H23Q22 27 16 27Q9 27 9 32Q9 35 18 38C33 42 27 54 16 54Q10 54 4 51V42H7Q9 51 16 51Q23 51 23 46Q23 43 14 40C0 36 5 24 16 24Q22 24 26 25Z"/>
+    <path transform="translate(124 0)" d="M18 24C38 24 38 54 18 54C-2 54 -2 24 18 24ZM18 27C6 27 6 51 18 51C30 51 30 27 18 27Z"/>
+    <path transform="translate(161 0)" d="M25 12L35 9V49L39 50V53H29V49Q25 54 19 54C2 54 2 24 19 24Q25 24 29 28V16L25 15ZM29 33Q25 27 20 27C9 27 9 51 20 51Q25 51 29 45Z"/>
+    <path transform="translate(203 0)" d="M6 15A4 4 0 1 0 14 15A4 4 0 1 0 6 15ZM2 28L13 24V49L17 50V53H2V50L7 49V31L2 30Z"/>
+    <path transform="translate(223 0)" d="M29 28Q29 35 24 34Q20 33 23 29Q21 27 17 27C5 27 6 50 19 50Q25 50 29 45L31 47Q26 54 18 54C-2 54 -2 24 18 24Q25 24 29 28Z"/>
+  </g>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Episodic</title>
+  <path fill="#100f0d" d="M0 0H64V64H0Z"/>
+  <g><path fill="#f0aa3c" d="M20 12H52V20H22Q20 20 20 22V28H44L40 36H20V42Q20 44 22 44H52V52H20Q12 52 12 44V20Q12 12 20 12Z"/></g>
+</svg>
