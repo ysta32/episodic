@@ -238,3 +238,24 @@ actions, and modals for things that should be inline.
   - A loading Button keeps its accessible name.
   - Overlapping dialogs and sheets share one scroll lock.
   - Segmented accepts the Up and Down arrow keys.
+- **2026-10-07**: Kinescope wired globally, and the landing page rebuilt as a film in six reels.
+  - Wiring: `globals.css` imports `tokens.css` (with temporary aliases `muted`, `border` and `accent2` for app screens
+    that aren't restyled yet). The root layout uses `fontVariables`, mounts `ToastProvider`, and runs a pre-paint script
+    that reads `episodic:theme` and `episodic:motion` from localStorage.
+  - Direction: "end of transmission → new reel". The hook is one hero headline ("TV Time is gone. *Your history doesn't
+    have to be.*") in Newsreader at `--k-text-hero`, lit by a tungsten key light with film grain. The problem section is
+    an always-ink band (`.k-ink`) where the date 07.15 / 2026 is the only focal point. The product section shows live
+    previews built from real primitives with public sample data (Severance): an episode list with a CSS-only Spoiler
+    Shield reveal, Up Next, and a radio-group reaction bar with an Episode Pulse curve labelled as an illustration.
+    The import demo runs the real `importTvTime` in the tab on a dropped zip or a synthetic sample, and shows counts,
+    date range and top shows. Nothing is stored. Proof is a data-flow diagram that marks each server hop with exactly
+    what crosses it, plus four verifiable facts. Depth is an editorial numbered index, not a card grid. The action
+    section is a closing ink band.
+  - Motion: one IntersectionObserver (`Reveal`) handles every `[data-reveal]`, with staggers set by `--k-delay`. Hero
+    lines use a masked "title cut". Everything animates transform and opacity only. Content is visible without JS, and
+    reduced motion is respected.
+  - Honesty fixes: we no longer claim TV Time reactions or comments migrate (`MIGRATES` lists history, ratings,
+    watchlists and lists). Every price is formatted from `SUPPORTER_PRICE`. The pricing page explains costs by category
+    and quotes no figures. Each marketing route has its own Kinescope-styled `opengraph-image.tsx`.
+  - Open: there is no LICENSE file in the repo yet, so the site says "open source" but not "MIT". The OG images use
+    built-in fonts (Newsreader isn't loaded into `next/og`).

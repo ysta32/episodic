@@ -37,7 +37,7 @@ export default function Page() {
           <li><strong>Import.</strong> Retyping ten years of history is not an option.</li>
           <li><strong>The social bits.</strong> Many TV Time fans stayed for the per-episode reactions.</li>
         </ul>
-        <div className="not-prose my-8"><Comparison /></div>
+        <div className="!my-10"><Comparison /></div>
 
         <h2>Trakt</h2>
         <p>
@@ -51,7 +51,7 @@ export default function Page() {
 
         <h2>Episodic</h2>
         <p>
-          Episodic was built for exactly this moment. It is free, <a href={REPO_URL}>open source</a> and local-first, which means your library lives on your own device and keeps working offline. It has a dedicated one-click TV Time importer, imports from Trakt, Simkl, Letterboxd and IMDb, and brings back per-episode reactions so the community feel survives too. You can install it as a PWA and export all your data whenever you like.
+          Episodic was built for exactly this moment. It is free, <a href={REPO_URL}>open source</a> and local-first, which means your library lives on your own device and keeps working offline. It reads a TV Time export directly in your browser (watch history, ratings, watchlists and lists), imports from Trakt, Simkl, Letterboxd and IMDb, and has its own per-episode reactions. Your old TV Time reactions and comments don&apos;t come across, but the habit can carry on. You can install it as a PWA and export all your data whenever you like.
         </p>
         <p>
           To be fair, Episodic is new. Its catalog and community are smaller than Trakt&apos;s, and it has no media center plugin ecosystem yet. If that matters to you, you can import to Episodic now and still keep a Trakt account.
@@ -59,7 +59,7 @@ export default function Page() {
 
         <h2>How to move over</h2>
         <p>
-          Request your data from TV Time, download the zip and drop it into Episodic. Our <Link href="/import-tv-time-data">step-by-step guide to exporting your TV Time data</Link> covers every click, including what to write in the request. Most people are fully imported within a few minutes of getting the file.
+          Request your data from TV Time, download the zip and drop it into Episodic. Our <Link href="/import-tv-time-data">step-by-step guide to exporting your TV Time data</Link> covers every click, including what to write in the request. Once you have the file, the import itself runs in your browser in seconds.
         </p>
 
         <h2>What it costs</h2>

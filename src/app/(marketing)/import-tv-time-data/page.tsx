@@ -35,7 +35,7 @@ export default function Page() {
       <Prose>
         <h2>Why you still have a way to get your data</h2>
         <p>
-          When TV Time shut down on July 15, 2026, millions of people worried that years of viewing history had vanished. In most cases it has not. Under the European GDPR and similar laws in the UK, California and elsewhere, a company that holds personal data about you must hand it over when you ask. That includes every show you followed, every episode you marked as watched, your ratings and your reactions.
+          When TV Time shut down on July 15, 2026, millions of people worried that years of viewing history had vanished. In most cases it has not. Under the European GDPR and similar laws in the UK, California and elsewhere, a company that holds personal data about you must hand it over when you ask. That includes every show you followed and every episode you marked as watched, with dates and ratings.
         </p>
         <p>
           The result arrives as a zip file of structured data. Episodic is built to read that file, so you never have to copy a list by hand.
@@ -58,10 +58,10 @@ export default function Page() {
 
         <h2>What gets imported</h2>
         <p>
-          Episodic restores the things that make a tracker useful: the shows you follow, which episodes you have watched and when, favorites, and ratings where they are included in the file. Because Episodic is local-first, the import runs in your browser. Your archive is not uploaded to a server for processing, and the data lands in your own library on your device.
+          Episodic restores the things that make a tracker useful: your watch history with dates, ratings where the file includes them, the shows you follow and your watchlist, favorites, and lists. Because Episodic is local-first, the import runs in your browser. Your archive is not uploaded to a server for processing, and the data lands in your own library on your device.
         </p>
         <p>
-          Reactions, the per-episode emoji and comments people loved in TV Time, are a core part of Episodic too, so you can keep reacting right where you left off.
+          What doesn&apos;t come across: your TV Time reactions and comments. Episodic has its own per-episode reactions and threads, so you can keep reacting from here on, but those start fresh.
         </p>
 
         <h2>Troubleshooting</h2>
