@@ -3,7 +3,42 @@ import { HIDE_AT_REPORTS } from "./moderation";
 
 export const RATE_LIMIT_MAX = 5;
 export const RATE_LIMIT_WINDOW_MS = 60_000;
-export const MAX_COMMENTS_PER_EPISODE = 500;
+/** Max comments retained per thread; older ones are deleted (with their report data) on overflow. */
+export const THREAD_RETENTION = 5000;
+/** ThreadStore.list() returns the newest LIST_LIMIT comments; use listPage() to reach older ones. */
+export const LIST_LIMIT = 200;
+export const PAGE_DEFAULT = 50;
+export const PAGE_MAX = 200;
+
+export interface CommentPage { comments: Comment[]; nextBefore?: number }
+
+/** ThreadStore plus cursor pagination (by createdAt) and direct lookup. */
+export interface PagedThreadStore extends ThreadStore {
+  /** Newest `limit` comments with createdAt < before (all if before is undefined), ascending. */
+  listPage(episodeId: string, before?: number, limit?: number): Promise<CommentPage>;
+  get(commentId: string): Promise<Comment | null>;
+}
+
+function clampLimit(limit: number | undefined): number {
+  if (limit === undefined || !Number.isFinite(limit)) return PAGE_DEFAULT;
+  return Math.min(PAGE_MAX, Math.max(1, Math.floor(limit)));
+}
+
+/**
+ * `candidates`: up to limit+1 newest comments older than the cursor, ascending by createdAt.
+ * If a page boundary splits comments sharing one createdAt, the whole tie group is deferred
+ * to the next page (nextBefore = ts + 1) so nothing is skipped. If the page would consist only
+ * of that tie group, the entire group is returned (may exceed limit) with nextBefore = ts.
+ */
+async function toPage(
+  candidates: Comment[], limit: number, tieGroup: (ts: number) => Promise<Comment[]>,
+): Promise<CommentPage> {
+  if (candidates.length <= limit) return { comments: candidates };
+  const boundary = candidates[0].createdAt;
+  const trimmed = candidates.slice(1).filter((c) => c.createdAt !== boundary);
+  if (trimmed.length > 0) return { comments: trimmed, nextBefore: boundary + 1 };
+  return { comments: await tieGroup(boundary), nextBefore: boundary };
+}
 
 export class RateLimitError extends Error {
   constructor(public readonly retryAfterSec: number) {
@@ -42,11 +77,12 @@ function buildComment(episodeId: string, c: NewComment, now: number): Comment {
   return out;
 }
 
-export interface MemoryStoreOptions { now?: () => number }
+export interface MemoryStoreOptions { now?: () => number; retention?: number }
 
 /** In-memory ThreadStore. Not shared across server instances; used for dev and tests. */
-export function createMemoryStore(opts: MemoryStoreOptions = {}): ThreadStore {
+export function createMemoryStore(opts: MemoryStoreOptions = {}): PagedThreadStore {
   const now = opts.now ?? Date.now;
+  const retention = opts.retention ?? THREAD_RETENTION;
   const threads = new Map<string, Comment[]>();
   const byId = new Map<string, Comment>();
   const reporters = new Map<string, Set<string>>();
@@ -77,14 +113,26 @@ export function createMemoryStore(opts: MemoryStoreOptions = {}): ThreadStore {
 
   return {
     async list(episodeId) {
-      return (threads.get(episodeId) ?? []).map((c) => structuredClone(c));
+      return (threads.get(episodeId) ?? []).slice(-LIST_LIMIT).map((c) => structuredClone(c));
+    },
+    async listPage(episodeId, before, limit) {
+      const n = clampLimit(limit);
+      const all = threads.get(episodeId) ?? [];
+      const older = before === undefined ? all : all.filter((c) => c.createdAt < before);
+      const sorted = [...older].sort((a, b) => a.createdAt - b.createdAt);
+      return toPage(sorted.slice(-(n + 1)).map((c) => structuredClone(c)), n, async (ts) =>
+        sorted.filter((c) => c.createdAt === ts).map((c) => structuredClone(c)));
+    },
+    async get(commentId) {
+      const c = byId.get(commentId);
+      return c ? structuredClone(c) : null;
     },
     async add(episodeId, c) {
       checkRate(c.authorId);
       const comment = buildComment(episodeId, c, now());
       const list = threads.get(episodeId) ?? [];
       list.push(comment);
-      while (list.length > MAX_COMMENTS_PER_EPISODE) {
+      while (list.length > retention) {
         const dropped = list.shift();
         if (dropped) { byId.delete(dropped.id); reporters.delete(dropped.id); }
       }
@@ -120,7 +168,7 @@ export function createMemoryStore(opts: MemoryStoreOptions = {}): ThreadStore {
 type RedisArg = string | number;
 type RedisReply = { result?: unknown; error?: string };
 
-export interface RedisConfig { url: string; token: string; fetchImpl?: typeof fetch; now?: () => number }
+export interface RedisConfig { url: string; token: string; fetchImpl?: typeof fetch; now?: () => number; retention?: number }
 
 function redisClient(cfg: RedisConfig) {
   const base = cfg.url.replace(/\/+$/, "");
@@ -144,7 +192,7 @@ function redisClient(cfg: RedisConfig) {
 }
 
 const K = {
-  thread: (ep: string) => `ep:thread:${ep}`,
+  thread: (ep: string) => `ep:zthread:${ep}`, // sorted set: member=commentId, score=createdAt
   comment: (id: string) => `ep:comment:${id}`,
   reporters: (id: string) => `ep:reporters:${id}`,
   hidden: (ep: string) => `ep:hidden:${ep}`,
@@ -163,9 +211,46 @@ function parseComment(raw: unknown): Comment | null {
   return null;
 }
 
-export function createRedisStore(cfg: RedisConfig): ThreadStore {
+export function createRedisStore(cfg: RedisConfig): PagedThreadStore {
   const r = redisClient(cfg);
   const now = cfg.now ?? Date.now;
+  const retention = cfg.retention ?? THREAD_RETENTION;
+
+  async function hydrate(episodeId: string, ids: unknown): Promise<Comment[]> {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    const idList = ids.map(String);
+    const res = await r.pipeline([
+      ["SMEMBERS", K.hidden(episodeId)],
+      ["MGET", ...idList.map(K.comment)],
+      ...idList.map((id) => ["SCARD", K.reporters(id)]),
+    ]);
+    const hiddenSet = new Set(Array.isArray(res[0]) ? res[0].map(String) : []);
+    const raws = res[1];
+    const out: Comment[] = [];
+    if (!Array.isArray(raws)) return out;
+    raws.forEach((raw, i) => {
+      const c = parseComment(raw);
+      if (!c) return;
+      const n = Number(res[i + 2] ?? 0);
+      c.reports = Number.isFinite(n) ? n : 0;
+      if (hiddenSet.has(c.id)) c.hidden = true;
+      out.push(c);
+    });
+    return out;
+  }
+
+  async function evictOverflow(episodeId: string, card: number): Promise<void> {
+    if (card <= retention) return;
+    const [old] = await r.pipeline([["ZRANGE", K.thread(episodeId), 0, card - retention - 1]]);
+    if (!Array.isArray(old) || old.length === 0) return;
+    const ids = old.map(String);
+    // ZREM by member (not by rank) so concurrent evictions never remove newer comments.
+    await r.pipeline([
+      ["ZREM", K.thread(episodeId), ...ids],
+      ["SREM", K.hidden(episodeId), ...ids],
+      ["DEL", ...ids.map(K.comment), ...ids.map(K.reporters)],
+    ]);
+  }
 
   async function tally(episodeId: string): Promise<ReactionCounts> {
     const [vals] = await r.pipeline([["HVALS", K.votes(episodeId)]]);
@@ -176,26 +261,22 @@ export function createRedisStore(cfg: RedisConfig): ThreadStore {
 
   return {
     async list(episodeId) {
-      const [ids, hidden] = await r.pipeline([
-        ["LRANGE", K.thread(episodeId), -MAX_COMMENTS_PER_EPISODE, -1],
-        ["SMEMBERS", K.hidden(episodeId)],
-      ]);
-      if (!Array.isArray(ids) || ids.length === 0) return [];
-      const hiddenSet = new Set(Array.isArray(hidden) ? hidden.map(String) : []);
-      const idList = ids.map(String);
-      const counts = await r.pipeline([["MGET", ...idList.map(K.comment)], ...idList.map((id) => ["SCARD", K.reporters(id)])]);
-      const raws = counts[0];
-      const out: Comment[] = [];
-      if (!Array.isArray(raws)) return out;
-      raws.forEach((raw, i) => {
-        const c = parseComment(raw);
-        if (!c) return;
-        const n = Number(counts[i + 1] ?? 0);
-        c.reports = Number.isFinite(n) ? n : 0;
-        if (hiddenSet.has(c.id)) c.hidden = true;
-        out.push(c);
+      const [ids] = await r.pipeline([["ZRANGE", K.thread(episodeId), -LIST_LIMIT, -1]]);
+      return hydrate(episodeId, ids);
+    },
+    async listPage(episodeId, before, limit) {
+      const n = clampLimit(limit);
+      const max = before === undefined ? "+inf" : `(${before}`;
+      const [ids] = await r.pipeline([["ZRANGE", K.thread(episodeId), max, "-inf", "BYSCORE", "REV", "LIMIT", 0, n + 1]]);
+      const desc = await hydrate(episodeId, ids);
+      return toPage(desc.reverse(), n, async (ts) => {
+        const [tie] = await r.pipeline([["ZRANGE", K.thread(episodeId), ts, ts, "BYSCORE"]]);
+        return hydrate(episodeId, tie);
       });
-      return out;
+    },
+    async get(commentId) {
+      const [raw] = await r.pipeline([["GET", K.comment(commentId)]]);
+      return parseComment(raw);
     },
     async add(episodeId, c) {
       const t = now();
@@ -206,11 +287,12 @@ export function createRedisStore(cfg: RedisConfig): ThreadStore {
         throw new RateLimitError(Math.max(1, Math.ceil(((bucket + 1) * RATE_LIMIT_WINDOW_MS - t) / 1000)));
       }
       const comment = buildComment(episodeId, c, t);
-      await r.pipeline([
+      const [, , card] = await r.pipeline([
         ["SET", K.comment(comment.id), JSON.stringify(comment)],
-        ["RPUSH", K.thread(episodeId), comment.id],
-        ["LTRIM", K.thread(episodeId), -MAX_COMMENTS_PER_EPISODE, -1],
+        ["ZADD", K.thread(episodeId), comment.createdAt, comment.id],
+        ["ZCARD", K.thread(episodeId)],
       ]);
+      await evictOverflow(episodeId, Number(card));
       return comment;
     },
     async react(episodeId, reaction, authorId) {
@@ -242,9 +324,9 @@ function readRedisEnv(): { url: string; token: string } | null {
   return url && token ? { url, token } : null;
 }
 
-let singleton: ThreadStore | null = null;
+let singleton: PagedThreadStore | null = null;
 
-export function getThreadStore(): ThreadStore {
+export function getThreadStore(): PagedThreadStore {
   if (singleton) return singleton;
   const env = readRedisEnv();
   singleton = env ? createRedisStore(env) : createMemoryStore();

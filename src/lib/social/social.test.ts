@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HIDE_AT_REPORTS, moderate } from "./moderation";
-import { createMemoryStore, createRedisStore, RateLimitError, NotFoundError, RATE_LIMIT_MAX } from "./store";
+import { createMemoryStore, createRedisStore, RateLimitError, NotFoundError, RATE_LIMIT_MAX, LIST_LIMIT, type PagedThreadStore } from "./store";
 import type { Comment, NewComment, ReactionCounts } from "./types";
 import { GET, POST } from "@/app/api/threads/[episodeId]/route";
 import { POST as REPORT } from "@/app/api/report/route";
@@ -99,41 +99,61 @@ describe("memory store", () => {
   });
 });
 
-describe("redis store (fake fetch)", () => {
-  function fakeUpstash() {
-    const kv = new Map<string, string>();
-    const lists = new Map<string, string[]>();
-    const sets = new Map<string, Set<string>>();
-    const hashes = new Map<string, Map<string, string>>();
-    const exec = (cmd: string[]): unknown => {
-      const [op, k, ...a] = cmd;
-      switch (op) {
-        case "GET": return kv.get(k) ?? null;
-        case "SET": kv.set(k, a[0]); return "OK";
-        case "MGET": return [k, ...a].map((x) => kv.get(x) ?? null);
-        case "INCR": { const n = Number(kv.get(k) ?? 0) + 1; kv.set(k, String(n)); return n; }
-        case "EXPIRE": return 1;
-        case "RPUSH": { const l = lists.get(k) ?? []; l.push(...a); lists.set(k, l); return l.length; }
-        case "LTRIM": { const l = lists.get(k) ?? []; lists.set(k, l.slice(Number(a[0]))); return "OK"; }
-        case "LRANGE": return (lists.get(k) ?? []).slice(Number(a[0]));
-        case "SADD": { const st = sets.get(k) ?? new Set(); const had = st.has(a[0]); st.add(a[0]); sets.set(k, st); return had ? 0 : 1; }
-        case "SCARD": return sets.get(k)?.size ?? 0;
-        case "SMEMBERS": return [...(sets.get(k) ?? [])];
-        case "HSET": { const h = hashes.get(k) ?? new Map(); h.set(a[0], a[1]); hashes.set(k, h); return 1; }
-        case "HVALS": return [...(hashes.get(k)?.values() ?? [])];
-        default: return { __err: `unknown ${op}` };
+function fakeUpstash() {
+  const kv = new Map<string, string>();
+  const zsets = new Map<string, Map<string, number>>();
+  const sets = new Map<string, Set<string>>();
+  const hashes = new Map<string, Map<string, string>>();
+  const exec = (cmd: string[]): unknown => {
+    const [op, k, ...a] = cmd;
+    switch (op) {
+      case "GET": return kv.get(k) ?? null;
+      case "SET": kv.set(k, a[0]); return "OK";
+      case "MGET": return [k, ...a].map((x) => kv.get(x) ?? null);
+      case "INCR": { const n = Number(kv.get(k) ?? 0) + 1; kv.set(k, String(n)); return n; }
+      case "EXPIRE": return 1;
+      case "ZADD": { const z = zsets.get(k) ?? new Map(); z.set(a[1], Number(a[0])); zsets.set(k, z); return 1; }
+      case "ZCARD": return zsets.get(k)?.size ?? 0;
+      case "ZREM": { const z = zsets.get(k); let n = 0; for (const m of a) if (z?.delete(m)) n++; return n; }
+      case "ZRANGE": {
+        const sorted = [...(zsets.get(k) ?? new Map<string, number>())].sort((x, y) => x[1] - y[1] || (x[0] < y[0] ? -1 : 1));
+        if (a.includes("BYSCORE")) {
+          const rev = a.includes("REV");
+          const bound = (x: string) => {
+            const ex = x.startsWith("("); const v = ex ? x.slice(1) : x;
+            return { v: v === "+inf" ? Infinity : v === "-inf" ? -Infinity : Number(v), ex };
+          };
+          const hi = bound(rev ? a[0] : a[1]); const lo = bound(rev ? a[1] : a[0]);
+          let out = sorted.filter(([, sc]) => (hi.ex ? sc < hi.v : sc <= hi.v) && (lo.ex ? sc > lo.v : sc >= lo.v));
+          if (rev) out = out.reverse();
+          const li = a.indexOf("LIMIT");
+          if (li >= 0) out = out.slice(Number(a[li + 1]), Number(a[li + 1]) + Number(a[li + 2]));
+          return out.map(([m]) => m);
+        }
+        const n = sorted.length; const norm = (i: number) => (i < 0 ? Math.max(0, n + i) : i);
+        return sorted.slice(norm(Number(a[0])), norm(Number(a[1])) + 1).map(([m]) => m);
       }
-    };
-    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
-      const cmds = JSON.parse(String(init?.body)) as string[][];
-      return Response.json(cmds.map((c) => ({ result: exec(c) })));
-    }) as typeof fetch;
-    return fetchImpl;
-  }
+      case "SREM": { const st = sets.get(k); let n = 0; for (const m of a) if (st?.delete(m)) n++; return n; }
+      case "DEL": { let n = 0; for (const x of [k, ...a]) { if (kv.delete(x)) n++; if (sets.delete(x)) n++; } return n; }
+      case "SADD": { const st = sets.get(k) ?? new Set(); const had = st.has(a[0]); st.add(a[0]); sets.set(k, st); return had ? 0 : 1; }
+      case "SCARD": return sets.get(k)?.size ?? 0;
+      case "SMEMBERS": return [...(sets.get(k) ?? [])];
+      case "HSET": { const h = hashes.get(k) ?? new Map(); h.set(a[0], a[1]); hashes.set(k, h); return 1; }
+      case "HVALS": return [...(hashes.get(k)?.values() ?? [])];
+      default: return { __err: `unknown ${op}` };
+    }
+  };
+  const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+    const cmds = JSON.parse(String(init?.body)) as string[][];
+    return Response.json(cmds.map((c) => ({ result: exec(c) })));
+  }) as typeof fetch;
+  return { fetchImpl, kv, sets, zsets };
+}
 
+describe("redis store (fake fetch)", () => {
   it("supports add/list/report/react semantics", async () => {
     let t = 5_000_000;
-    const s = createRedisStore({ url: "https://x.upstash.io/", token: "t", fetchImpl: fakeUpstash(), now: () => t });
+    const s = createRedisStore({ url: "https://x.upstash.io/", token: "t", fetchImpl: fakeUpstash().fetchImpl, now: () => t });
     const c = await s.add("ep:9", nc());
     expect((await s.list("ep:9"))[0].id).toBe(c.id);
     for (const r of ["r1", "r2", "r2"]) await s.report(c.id, "x", r);
@@ -148,6 +168,95 @@ describe("redis store (fake fetch)", () => {
     await expect(s.add("ep:9", nc())).rejects.toBeInstanceOf(RateLimitError);
     t += 60_000;
     await expect(s.add("ep:9", nc())).resolves.toBeTruthy();
+  });
+});
+
+async function drain(s: PagedThreadStore, ep: string, limit: number): Promise<string[]> {
+  const seen: string[] = [];
+  let before: number | undefined;
+  for (let guard = 0; guard < 100; guard++) {
+    const page = await s.listPage(ep, before, limit);
+    seen.unshift(...page.comments.map((c) => c.body));
+    if (page.nextBefore === undefined) return seen;
+    expect(page.comments.length).toBeGreaterThan(0);
+    before = page.nextBefore;
+  }
+  throw new Error("pagination did not terminate");
+}
+
+describe("pagination + retention", () => {
+  // Timestamps with deliberate ties so page boundaries split same-ms groups.
+  const stamps = [1, 2, 2, 2, 3, 4, 4, 5, 6, 6, 6, 6, 7];
+  function memoryWithStamps() {
+    let i = 0;
+    const s = createMemoryStore({ now: () => stamps[Math.min(i, stamps.length - 1)] * 1000 });
+    return { s, tick: () => { i++; } };
+  }
+
+  it("memory: list() returns the newest LIST_LIMIT; listPage walks everything in order without loss", async () => {
+    let t = 1_000;
+    const s = createMemoryStore({ now: () => (t += 7) });
+    for (let i = 0; i < LIST_LIMIT + 30; i++) await s.add("ep:big", nc({ body: `c${i}`, authorId: `author-${i}-xx` }));
+    const list = await s.list("ep:big");
+    expect(list).toHaveLength(LIST_LIMIT);
+    expect(list[0].body).toBe("c30");
+    const first = await s.listPage("ep:big");
+    expect(first.comments).toHaveLength(50);
+    expect(await drain(s, "ep:big", 50)).toEqual(Array.from({ length: LIST_LIMIT + 30 }, (_, i) => `c${i}`));
+  });
+
+  it("memory: ties on createdAt across page boundaries are not skipped or duplicated", async () => {
+    const { s, tick } = memoryWithStamps();
+    for (let i = 0; i < stamps.length; i++) { await s.add("ep:tie", nc({ body: `t${i}`, authorId: `author-${i}-xx` })); tick(); }
+    const expected = stamps.map((_, i) => `t${i}`);
+    for (const limit of [1, 2, 3, 4, 5, 50]) expect(await drain(s, "ep:tie", limit)).toEqual(expected);
+  });
+
+  it("memory: retention evicts oldest and its data; evicted comments are not reportable", async () => {
+    const s = createMemoryStore({ retention: 3 });
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) ids.push((await s.add("ep:r", nc({ body: `r${i}`, authorId: `author-${i}-xx` }))).id);
+    expect((await s.list("ep:r")).map((c) => c.body)).toEqual(["r2", "r3", "r4"]);
+    expect(await s.get(ids[0])).toBeNull();
+    expect((await s.get(ids[4]))?.body).toBe("r4");
+    await expect(s.report(ids[0], "x", "rep")).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("redis: listPage with ties, retention deletes trimmed keys", async () => {
+    const fake = fakeUpstash();
+    let i = 0;
+    const s = createRedisStore({ url: "https://x.upstash.io", token: "t", fetchImpl: fake.fetchImpl, now: () => stamps[Math.min(i, stamps.length - 1)] * 1000, retention: 10 });
+    const ids: string[] = [];
+    for (let k = 0; k < stamps.length; k++) { ids.push((await s.add("ep:rt", nc({ body: `t${k}`, authorId: `author-${k}-xx` }))).id); i++; }
+    // 13 added, retention 10 -> the 3 lowest-scored evicted (Redis orders same-ms ties by member).
+    const zset = fake.zsets.get("ep:zthread:ep:rt") ?? new Map<string, number>();
+    const retained = ids.filter((id) => zset.has(id));
+    const evicted = ids.filter((id) => !zset.has(id));
+    expect(retained).toHaveLength(10);
+    expect(evicted).toHaveLength(3);
+    const retainedBodies = ids.map((_, k) => `t${k}`).filter((_, k) => zset.has(ids[k]));
+    for (const limit of [1, 2, 3, 50]) {
+      const seen = await drain(s, "ep:rt", limit);
+      expect([...seen].sort()).toEqual([...retainedBodies].sort());
+      const ts = seen.map((b) => stamps[Number(b.slice(1))]);
+      expect(ts).toEqual([...ts].sort((x, y) => x - y));
+    }
+    const minRetained = Math.min(...retained.map((id) => zset.get(id) ?? 0));
+    for (const id of evicted) {
+      expect(stamps[ids.indexOf(id)] * 1000).toBeLessThanOrEqual(minRetained);
+      expect(fake.kv.has(`ep:comment:${id}`)).toBe(false);
+      expect(await s.get(id)).toBeNull();
+      await expect(s.report(id, "x", "rep-1")).rejects.toBeInstanceOf(NotFoundError);
+    }
+    expect(fake.zsets.get("ep:zthread:ep:rt")?.size).toBe(10);
+    for (const r of ["a", "b", "c"]) await s.report(ids[5], "x", `rep-${r}`);
+    expect(fake.sets.get("ep:hidden:ep:rt")?.has(ids[5])).toBe(true);
+    // push enough to evict ids[5]; its reporter set and hidden membership must be cleaned up
+    for (let k = 0; k < 8; k++) await s.add("ep:rt", nc({ body: `n${k}`, authorId: `late-author-${k}` }));
+    expect(fake.kv.has(`ep:comment:${ids[5]}`)).toBe(false);
+    expect(fake.sets.has(`ep:reporters:${ids[5]}`)).toBe(false);
+    expect(fake.sets.get("ep:hidden:ep:rt")?.has(ids[5])).toBe(false);
+    expect(fake.zsets.get("ep:zthread:ep:rt")?.size).toBe(10);
   });
 });
 
@@ -211,6 +320,30 @@ describe("route handlers", () => {
     const res = await post(ep, { body: "m6", author: "A", authorId: a, spoiler: false });
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toMatch(/^\d+$/);
+  });
+
+  it("GET paginates with ?before and returns nextBefore; validates params", async () => {
+    const ep = `route:${Date.now()}g`;
+    for (let i = 0; i < 4; i++) await post(ep, { body: `p${i}`, author: "A", authorId: freshId(), spoiler: false });
+    const pageReq = (qs: string) => GET(new Request(`http://x/api/threads/${ep}${qs}`), ctx(ep));
+    type Page = { comments: Comment[]; nextBefore?: number };
+    const all = (await (await pageReq("")).json()) as Page;
+    expect(all.comments.map((c) => c.body)).toEqual(["p0", "p1", "p2", "p3"]);
+    expect(all.nextBefore).toBeUndefined();
+    // Comments share a ms here; paginate until exhausted and ensure everything is seen exactly once.
+    const seen: string[] = [];
+    let qs = "?limit=1";
+    for (let g = 0; g < 10; g++) {
+      const p = (await (await pageReq(qs)).json()) as Page;
+      seen.unshift(...p.comments.map((c) => c.body));
+      if (p.nextBefore === undefined) break;
+      qs = `?limit=1&before=${p.nextBefore}`;
+    }
+    expect(seen).toEqual(["p0", "p1", "p2", "p3"]);
+    expect((await pageReq("?before=abc")).status).toBe(400);
+    expect((await pageReq("?before=-1")).status).toBe(400);
+    expect((await pageReq("?limit=0")).status).toBe(400);
+    expect((await pageReq("?limit=201")).status).toBe(400);
   });
 
   it("handles reactions with switching (200 ReactionCounts)", async () => {

@@ -32,8 +32,8 @@ export async function POST(req: Request): Promise<Response> {
   const reason = moderate(p.data.reason).clean.slice(0, 500) || "unspecified";
   try {
     const store = getThreadStore();
-    const comments = await store.list(p.data.episodeId);
-    if (!comments.some((c) => c.id === p.data.commentId)) return json({ error: "not_found" }, 404);
+    const target = await store.get(p.data.commentId);
+    if (!target || target.episodeId !== p.data.episodeId) return json({ error: "not_found" }, 404);
     const { hidden } = await store.report(p.data.commentId, reason, p.data.reporterId);
     return json({ ok: true, hidden });
   } catch (e) {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { REACTIONS } from "@/lib/social/types";
 import { moderate } from "@/lib/social/moderation";
-import { getThreadStore, RateLimitError } from "@/lib/social/store";
+import { getThreadStore, PAGE_MAX, RateLimitError } from "@/lib/social/store";
 
 export const dynamic = "force-dynamic";
 
@@ -56,13 +56,26 @@ async function readJson(req: Request): Promise<{ ok: true; value: unknown } | { 
 
 type Ctx = { params: Promise<{ episodeId: string }> };
 
-export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
+function parseIntParam(v: string | null, min: number, max: number): number | undefined | null {
+  if (v === null) return undefined;
+  if (!/^\d{1,16}$/.test(v)) return null;
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n >= min && n <= max ? n : null;
+}
+
+/** GET ?before=<createdAt>&limit=<1..PAGE_MAX> -> {comments (ascending, hidden removed), reactions, nextBefore?} */
+export async function GET(req: Request, ctx: Ctx): Promise<Response> {
   const { episodeId } = await ctx.params;
   if (!EPISODE_ID_RE.test(episodeId)) return bad("invalid_episode");
+  const sp = new URL(req.url).searchParams;
+  const before = parseIntParam(sp.get("before"), 1, Number.MAX_SAFE_INTEGER);
+  const limit = parseIntParam(sp.get("limit"), 1, PAGE_MAX);
+  if (before === null) return bad("invalid_before");
+  if (limit === null) return bad("invalid_limit");
   const store = getThreadStore();
-  const [all, reactions] = await Promise.all([store.list(episodeId), store.reactions(episodeId)]);
-  const comments = all.filter((c) => !c.hidden);
-  return json({ comments, reactions });
+  const [page, reactions] = await Promise.all([store.listPage(episodeId, before, limit), store.reactions(episodeId)]);
+  const comments = page.comments.filter((c) => !c.hidden);
+  return json(page.nextBefore === undefined ? { comments, reactions } : { comments, reactions, nextBefore: page.nextBefore });
 }
 
 export async function POST(req: Request, ctx: Ctx): Promise<Response> {
