@@ -15,11 +15,11 @@ export function serverProvider(): MetadataProvider {
   const tmdb = createTmdb(key);
   server = {
     async search(query) {
-      const [shows, titles] = await Promise.all([maze.search(query), tmdb.search(query)]);
+      const [shows, titles] = await Promise.all([maze.search(query), tmdb.search(query).catch(() => [])]);
       return [...shows, ...titles.filter((item) => item.kind === "movie")];
     },
-    getShow: (id) => id.startsWith("tmdb:") ? tmdb.getShow(id) : maze.getShow(id),
-    getEpisodes: (id) => id.startsWith("tmdb:") ? tmdb.getEpisodes(id) : maze.getEpisodes(id),
+    getShow: maze.getShow,
+    getEpisodes: maze.getEpisodes,
     getMovie: tmdb.getMovie,
     async resolve(kind, ids, title, year) {
       if (kind === "movie") return tmdb.resolve(kind, ids, title, year);
@@ -29,13 +29,7 @@ export function serverProvider(): MetadataProvider {
       }
       return maze.resolve(kind, ids, title, year);
     },
-    async schedule(ids, from, to) {
-      const groups = await Promise.all([
-        maze.schedule(ids.filter((id) => id.startsWith("tvmaze:")), from, to),
-        tmdb.schedule(ids.filter((id) => id.startsWith("tmdb:")), from, to),
-      ]);
-      return groups.flat().sort((a, b) => a.airdate!.localeCompare(b.airdate!));
-    },
+    schedule: maze.schedule,
   };
   return server;
 }

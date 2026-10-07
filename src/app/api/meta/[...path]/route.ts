@@ -1,7 +1,8 @@
 import { META_TTL, serverProvider } from "@/lib/meta";
 import type { ExternalIds } from "@/lib/types";
 
-const canonicalId = /^(tvmaze|tmdb):\d+$/;
+const showId = /^tvmaze:\d+$/;
+const movieId = /^(tmdb:\d+|imdb:tt\d+)$/;
 function validDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
@@ -16,7 +17,7 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   try {
     const provider = serverProvider();
     if (path.length === 2 && ["show", "episodes", "movie"].includes(action)) {
-      if (!canonicalId.test(id)) return badRequest();
+      if (!(action === "movie" ? movieId : showId).test(id)) return badRequest();
       if (action === "show") { result = await provider.getShow(id); ttl = META_TTL.show; }
       else if (action === "movie") { result = await provider.getMovie(id); ttl = META_TTL.movie; }
       else { result = await provider.getEpisodes(id); ttl = META_TTL.episodes; }
@@ -48,7 +49,7 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
       const ids = (params.get("ids") ?? "").split(",").filter(Boolean);
       const from = params.get("from") ?? "";
       const to = params.get("to") ?? "";
-      if (ids.length > 100 || ids.some((id) => !canonicalId.test(id)) || !validDate(from) || !validDate(to) || from > to) return badRequest();
+      if (ids.length > 100 || ids.some((id) => !showId.test(id)) || !validDate(from) || !validDate(to) || from > to) return badRequest();
       result = await provider.schedule(ids, from, to); ttl = META_TTL.schedule;
     } else {
       return Response.json({ error: "Metadata endpoint not found" }, { status: 404 });

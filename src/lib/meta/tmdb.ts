@@ -64,6 +64,11 @@ export function createTmdb(apiKey: string, fetchImpl: typeof fetch = fetch): Met
       return episodes;
     },
     async getMovie(id): Promise<Movie | null> {
+      if (/^imdb:tt\d+$/.test(id)) {
+        const found = await request<{ movie_results: TmdbTitle[] }>(`find/${id.slice(5)}`, { external_source: "imdb_id" });
+        const movie = found?.movie_results[0];
+        return movie ? provider.getMovie(`tmdb:${movie.id}`) : null;
+      }
       if (!/^tmdb:\d+$/.test(id)) return null;
       const item = await request<TmdbTitle>(`movie/${id.slice(5)}`);
       return item ? { id, kind: "movie", title: item.title ?? "", year: releaseYear(item.release_date),

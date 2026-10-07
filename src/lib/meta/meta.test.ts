@@ -90,6 +90,15 @@ describe("TVmaze", () => {
 });
 
 describe("TMDB", () => {
+  it.each([{ movie_results: [] }, null])("returns null when IMDb lookup has no movie: %j", async (body) => {
+    const fetcher = mockFetch().mockResolvedValue(reply(body, body === null ? 404 : 200));
+    expect(await createTmdb("key", fetcher).getMovie("imdb:tt5")).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("propagates IMDb lookup failures", async () => {
+    const fetcher = mockFetch().mockResolvedValue(reply({}, 503));
+    await expect(createTmdb("key", fetcher).getMovie("imdb:tt5")).rejects.toThrow("503");
+  });
   it("maps movies, shows, episodes and image URLs", async () => {
     const fetcher = mockFetch()
       .mockResolvedValueOnce(reply({ id: 5, title: "Movie", release_date: "2001-02-03", poster_path: "/poster.jpg", overview: "<p>Story</p>", imdb_id: "tt5", runtime: 100 }))
@@ -169,6 +178,68 @@ describe("client cache", () => {
 describe("proxy routes", () => {
   beforeEach(() => { vi.resetModules(); vi.stubEnv("TMDB_API_KEY", ""); });
   const context = (path: string[]) => ({ params: Promise.resolve({ path }) });
+  it("serves IMDb movie IDs as canonical TMDB movies with full details", async () => {
+    vi.stubEnv("TMDB_API_KEY", "test-private-key");
+    const fetcher = mockFetch()
+      .mockResolvedValueOnce(reply({ movie_results: [{ id: 5, title: "Film" }] }))
+      .mockResolvedValueOnce(reply({ id: 5, title: "Film", imdb_id: "tt5", runtime: 100 }));
+    vi.stubGlobal("fetch", fetcher);
+    const { GET } = await import("../../app/api/meta/[...path]/route");
+    const response = await GET(new Request("https://example.test/api/meta/movie/imdb:tt5"), context(["movie", "imdb:tt5"]));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: "tmdb:5", kind: "movie", runtime: 100, ids: { tmdb: 5, imdb: "tt5" } });
+    expect(fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/3/find/tt5", "/3/movie/5"]);
+    expect(new URL(String(fetcher.mock.calls[0][0])).searchParams.get("external_source")).toBe("imdb_id");
+  });
+  it.each(["http", "network"])("preserves TVmaze search results on TMDB %s failure", async (failure) => {
+    vi.stubEnv("TMDB_API_KEY", "test-private-key");
+    const fetcher = mockFetch().mockImplementation(async (input) => {
+      if (String(input).includes("tvmaze.com")) return reply([{ show: mazeShow }]);
+      if (failure === "network") throw new Error("network failure");
+      return reply({}, 503);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { GET } = await import("../../app/api/meta/[...path]/route");
+    const response = await GET(new Request("https://example.test/api/meta/search?q=Example"), context(["search"]));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject([{ id: "tvmaze:42", kind: "show" }]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it.each(["", "test-private-key"])("restricts server show methods to TVmaze IDs with key %j", async (key) => {
+    vi.stubEnv("TMDB_API_KEY", key);
+    const fetcher = mockFetch().mockImplementation(async (input) =>
+      String(input).includes("/episodes") ? reply([mazeEpisode]) : reply(mazeShow));
+    vi.stubGlobal("fetch", fetcher);
+    const { serverProvider } = await import("./index");
+    const provider = serverProvider();
+    expect(await provider.getShow("tmdb:8")).toBeNull();
+    expect(await provider.getEpisodes("tmdb:8")).toEqual([]);
+    expect(await provider.schedule(["tmdb:8"], "2026-10-07", "2026-10-07")).toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(await provider.getShow("tvmaze:42")).toMatchObject({ id: "tvmaze:42" });
+    expect(await provider.getEpisodes("tvmaze:42")).toMatchObject([{ showId: "tvmaze:42" }]);
+    expect(await provider.schedule(["tmdb:8", "tvmaze:42"], "2026-10-07", "2026-10-07")).toMatchObject([{ showId: "tvmaze:42" }]);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls.every(([url]) => new URL(String(url)).hostname === "api.tvmaze.com")).toBe(true);
+  });
+  it.each([
+    ["show/tmdb:8", ["show", "tmdb:8"]],
+    ["episodes/tmdb:8", ["episodes", "tmdb:8"]],
+    ["schedule?ids=tvmaze:42,tmdb:8&from=2026-10-07&to=2026-10-07", ["schedule"]],
+    ["show/imdb:tt5", ["show", "imdb:tt5"]],
+    ["movie/tvmaze:42", ["movie", "tvmaze:42"]],
+    ["movie/imdb:5", ["movie", "imdb:5"]],
+    ["movie/imdb:tt", ["movie", "imdb:tt"]],
+    ["movie/imdb:tt5x", ["movie", "imdb:tt5x"]],
+  ])("rejects noncanonical IDs in %s with TMDB enabled", async (url, path) => {
+    vi.stubEnv("TMDB_API_KEY", "test-private-key");
+    const fetcher = mockFetch();
+    vi.stubGlobal("fetch", fetcher);
+    const { GET } = await import("../../app/api/meta/[...path]/route");
+    const response = await GET(new Request(`https://example.test/api/meta/${url}`), context(path as string[]));
+    expect(response.status).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it("serves show JSON with CDN cache headers", async () => {
     vi.stubGlobal("fetch", mockFetch().mockResolvedValue(reply(mazeShow)));
     const { GET } = await import("../../app/api/meta/[...path]/route");
