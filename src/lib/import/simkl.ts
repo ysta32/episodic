@@ -1,6 +1,6 @@
 import Papa from "papaparse";
 import type { ExternalIds, MediaKind, TrackStatus } from "../types";
-import { emptyBundle, type Importer } from "./types";
+import { emptyBundle, type ImportedItem, type ImportedWatch, type Importer } from "./types";
 
 type Row = Record<string, unknown>;
 const object = (value: unknown): Row | undefined =>
@@ -41,10 +41,29 @@ const status = (value: unknown): TrackStatus | undefined => {
     default: return undefined;
   }
 };
+const sameMedia = (left: Pick<ImportedItem, "title" | "year" | "ids">, right: Pick<ImportedItem, "title" | "year" | "ids">): boolean => {
+  const keys = ["imdb", "tmdb", "tvdb", "simkl"] as const;
+  return keys.some((key) => left.ids[key] !== undefined && left.ids[key] === right.ids[key]) ||
+    (left.title === right.title && left.year === right.year &&
+      !keys.some((key) => left.ids[key] !== undefined && right.ids[key] !== undefined && left.ids[key] !== right.ids[key]));
+};
 
 export const importSimkl: Importer = async (files) => {
   const bundle = emptyBundle("simkl");
   const warn = (file: string, message: string) => bundle.warnings.push(`${file}: ${message}`);
+  const addItem = (item: ImportedItem): void => {
+    const matches = bundle.items.filter((candidate) => candidate.kind === item.kind && sameMedia(candidate, item));
+    const existing = matches[0];
+    if (!existing) { bundle.items.push(item); return; }
+    for (const incoming of [...matches.slice(1), item]) {
+      Object.assign(existing.ids, incoming.ids);
+      if (incoming.rating !== undefined) existing.rating = incoming.rating;
+      if (incoming.addedAt !== undefined) existing.addedAt = incoming.addedAt;
+      if (incoming.status !== undefined && (existing.status === undefined || existing.status === "watchlist")) existing.status = incoming.status;
+      if (existing.year === undefined) existing.year = incoming.year;
+    }
+    for (const duplicate of matches.slice(1)) bundle.items.splice(bundle.items.indexOf(duplicate), 1);
+  };
   const entry = (value: unknown, group: string, file: string): void => {
     const row = object(value);
     if (!row) { warn(file, "skipped non-object entry"); return; }
@@ -58,7 +77,7 @@ export const importSimkl: Importer = async (files) => {
     if (row.status && !item.status) warn(file, `unrecognized status for ${item.title}`);
     const score = numeric(row.user_rating ?? row.rating);
     if (score !== undefined && score > 0) item.rating = Math.min(10, Math.max(1, score));
-    bundle.items.push(item);
+    addItem(item);
     const watchedAt = date(row.last_watched_at ?? row.watched_at);
     if (kind === "movie" && (item.status === "completed" || watchedAt !== undefined)) bundle.watches.push({ kind: "movie", title: item.title, year: item.year, ids: item.ids, watchedAt });
     if (kind === "show" && Array.isArray(row.seasons)) for (const seasonValue of row.seasons) {
@@ -116,10 +135,30 @@ export const importSimkl: Importer = async (files) => {
     }
     parsed.data.forEach((row, index) => {
       if (badRows.has(index)) return;
-      entry({ title: row.title, type: row.type, year: row.year, status: row.status || row.watchlist || row.watchliststatus,
+      const candidates = [row.status, row.watchlist, row.watchliststatus];
+      const recognizedStatus = candidates.find((value) => status(value) !== undefined);
+      entry({ title: row.title, type: row.type, year: row.year, status: recognizedStatus ?? candidates.find((value) => value?.trim()),
         user_rating: row.userrating || row.rating, last_watched_at: row.lastwatchedat || row.watchedat,
         ids: { imdb: row.imdbid || row.imdb, tmdb: row.tmdb || row.tmdbid, tvdb: row.tvdb || row.tvdbid, simkl: row.simkl || row.simklid } }, "", file.name);
     });
   }
+  const watches: ImportedWatch[] = [];
+  for (const watch of bundle.watches) {
+    const item = bundle.items.find((candidate) => candidate.kind === (watch.kind === "movie" ? "movie" : "show") && sameMedia(candidate, watch));
+    if (item) {
+      watch.ids = item.ids;
+      watch.title = item.title;
+      watch.year = item.year;
+    }
+    const previous = watches.find((candidate) => candidate.kind === watch.kind && sameMedia(candidate, watch) &&
+      candidate.season === watch.season && candidate.number === watch.number);
+    if (!previous) watches.push(watch);
+    else {
+      previous.ids = { ...previous.ids, ...watch.ids };
+      if (watch.episodeIds) previous.episodeIds = { ...previous.episodeIds, ...watch.episodeIds };
+      if (watch.watchedAt !== undefined && (previous.watchedAt === undefined || watch.watchedAt > previous.watchedAt)) previous.watchedAt = watch.watchedAt;
+    }
+  }
+  bundle.watches = watches;
   return bundle;
 };

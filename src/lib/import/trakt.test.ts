@@ -69,6 +69,22 @@ describe("importTrakt", () => {
     expect(result.watches).toHaveLength(1);
   });
 
+  it("keeps list entries out of library items, ratings and watches", async () => {
+    const library = file("watched-movies.json", [{ movie, rating: 8 }]);
+    const list = file("lists-favorites.json", [
+      { show, listed_at: "2024-01-01", rating: 2, seasons: [{ number: 1, episodes: [{ number: 1, rating: 3 }] }] },
+      { movie, listed_at: "2024-01-01", rating: 1, watched_at: "2024-01-02" },
+    ]);
+    const baseline = await importTrakt([library]);
+    for (const files of [[list], [library, list], [list, library]]) {
+      const result = await importTrakt(files);
+      expect(result.items).toEqual(files.length === 1 ? [] : baseline.items);
+      expect(result.watches).toEqual(files.length === 1 ? [] : baseline.watches);
+      expect(result.episodeRatings).toEqual([]);
+      expect(result.lists[0].items).toEqual([{ kind: "show", ...show }, { kind: "movie", ...movie }]);
+    }
+  });
+
   it("warns on malformed entries and files, continuing with valid input", async () => {
     const result = await importTrakt([
       file("broken.json", "{"), file("unknown.json", { other: [] }),

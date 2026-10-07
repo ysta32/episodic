@@ -57,6 +57,54 @@ describe("importSimkl", () => {
     expect(result.watches).toEqual([]);
   });
 
+  it("uses the first recognized CSV status column and warns when none are recognized", async () => {
+    const result = await importSimkl([file("export.csv",
+      "Title,Type,Status,Watchlist,Watchlist/Status\nOne,show,Ended,watching,completed\nTwo,show,Returning,yes,hold\nThree,show,completed,watching,hold\nFour,show,Unknown,yes,no")]);
+    expect(result.items.map((item) => item.status)).toEqual(["watching", "paused", "completed", undefined]);
+    expect(result.warnings).toEqual(["export.csv: unrecognized status for Four"]);
+  });
+
+  it.each(["imdb", "tmdb", "tvdb", "simkl"] as const)("merges JSON and CSV movie items and watches by %s", async (key) => {
+    const id = key === "imdb" ? "tt1234567" : 123;
+    const json = file("movies.json", [{ title: "Original", year: 2020, ids: { [key]: id }, status: "completed", user_rating: 8, watched_at: "2024-01-01" }]);
+    const csv = file("export.csv", `Title,Type,Year,Status,${key},Rating\nAlias,movie,2020,completed,${id},0`);
+    for (const files of [[json, csv], [csv, json]]) {
+      const result = await importSimkl(files);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ ids: { [key]: id }, status: "completed", rating: 8 });
+      expect(result.watches).toHaveLength(1);
+      expect(result.watches[0].watchedAt).toBe(Date.parse("2024-01-01"));
+    }
+  });
+
+  it("merges shows and anime by title and year, preserving distinct episodes and media", async () => {
+    const result = await importSimkl([file("backup.json", {
+      shows: [{ title: "Orbit", year: 2020, status: "completed", ids: { tvdb: 12 }, seasons: [{ number: 1, episodes: [{ number: 1, watched_at: "2024-01-01" }] }] }],
+      anime: [{ title: "Orbit", year: 2020, ids: { simkl: 34 }, user_rating: 9, seasons: [
+        { number: 1, episodes: [{ number: 1 }, { number: 2 }] },
+        { number: 2, episodes: [{ number: 1 }] },
+      ] }],
+      movies: [{ title: "Orbit", year: 2020, ids: { tvdb: 12 }, status: "completed" }],
+    })]);
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0]).toMatchObject({ kind: "show", ids: { tvdb: 12, simkl: 34 }, status: "completed", rating: 9 });
+    expect(result.watches.map(({ kind, season, number }) => ({ kind, season, number }))).toEqual([
+      { kind: "episode", season: 1, number: 1 }, { kind: "episode", season: 1, number: 2 },
+      { kind: "episode", season: 2, number: 1 }, { kind: "movie", season: undefined, number: undefined },
+    ]);
+    expect(result.watches[0].watchedAt).toBe(Date.parse("2024-01-01"));
+  });
+
+  it("keeps different years and conflicting IDs separate", async () => {
+    const result = await importSimkl([file("movies.json", [
+      { title: "Film", year: 2020, ids: { simkl: 1 }, status: "completed" },
+      { title: "Film", year: 2020, ids: { simkl: 2 }, status: "completed" },
+      { title: "Film", year: 2021, status: "completed" },
+    ])]);
+    expect(result.items).toHaveLength(3);
+    expect(result.watches).toHaveLength(3);
+  });
+
   it("warns for malformed files, records, episodes and unrecognized CSV", async () => {
     const result = await importSimkl([
       file("bad.json", "{"), file("other.csv", "Title,Year\nOther,2020"),

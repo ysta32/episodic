@@ -63,7 +63,7 @@ export const importTrakt: Importer = async (files) => {
       previous.season === watch.season && previous.number === watch.number &&
       previous.watchedAt === watch.watchedAt)) bundle.watches.push(watch);
   };
-  const entry = (value: unknown, mode: string, file: string): ImportedItem | undefined => {
+  const entry = (value: unknown, mode: string, file: string, listContext = false): ImportedItem | undefined => {
     const row = object(value);
     if (!row) { warn(file, "skipped non-object entry"); return; }
     const kind: MediaKind | undefined = object(row.movie) ? "movie" : object(row.show) ? "show" :
@@ -72,9 +72,10 @@ export const importTrakt: Importer = async (files) => {
     if (!kind || typeof media.title !== "string" || !media.title.trim()) {
       warn(file, "skipped entry without a title or media type"); return;
     }
+    const item: ImportedItem = { kind, title: media.title.trim(), year: integer(media.year), ids: ids(media.ids) };
+    if (listContext) return item;
     const watched = /watched|history/.test(mode) || row.watched_at !== undefined || row.last_watched_at !== undefined || Array.isArray(row.seasons);
     const status: TrackStatus | undefined = watched ? (kind === "movie" ? "completed" : "watching") : /watchlist/.test(mode) || row.listed_at !== undefined ? "watchlist" : undefined;
-    const item: ImportedItem = { kind, title: media.title.trim(), year: integer(media.year), ids: ids(media.ids) };
     if (status) item.status = status;
     const score = rating(row.rating);
     if (score !== undefined && !object(row.episode)) item.rating = score;
@@ -107,7 +108,7 @@ export const importTrakt: Importer = async (files) => {
     if (row && Array.isArray(row.items)) {
       const listMeta = object(row.list);
       const name = typeof row.name === "string" ? row.name : typeof listMeta?.name === "string" ? listMeta.name : file.replace(/\.[^.]+$/, "");
-      const items = row.items.map((item) => entry(item, "list", file)).filter((item): item is ImportedItem => item !== undefined);
+      const items = row.items.map((item) => entry(item, "list", file, true)).filter((item): item is ImportedItem => item !== undefined);
       bundle.lists.push({ name, items: items.map(({ kind, title, year, ids }) => ({ kind, title, year, ids })) });
       return;
     }
