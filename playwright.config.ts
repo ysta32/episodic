@@ -16,6 +16,15 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    ...(!process.env.CI || process.env.VISUAL_TESTS === "1"
+      ? [
+          {
+            name: "visual",
+            testMatch: "visual.spec.ts",
+            use: { ...devices["Desktop Chrome"] },
+          },
+        ]
+      : []),
   ],
   webServer: {
     command: "npm run start -- -p 4720",
