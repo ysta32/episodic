@@ -200,6 +200,29 @@ const K = {
   rate: (authorId: string, bucket: number) => `ep:rl:${authorId}:${bucket}`,
 };
 
+/**
+ * Atomic add + retention trim (Lua scripts run atomically in Redis).
+ * KEYS: [1] thread zset, [2] hidden set, [3] new comment key.
+ * ARGV: [1] score (createdAt), [2] comment id, [3] comment JSON, [4] retention,
+ *       [5] comment key prefix, [6] reporters key prefix.
+ * Victim comment/reporter keys are derived from ARGV prefixes (single-node Upstash; not cluster-safe).
+ * Returns the number of evicted comments.
+ */
+export const ADD_AND_TRIM_LUA = `
+redis.call('SET', KEYS[3], ARGV[3])
+redis.call('ZADD', KEYS[1], ARGV[1], ARGV[2])
+local n = redis.call('ZCARD', KEYS[1])
+local keep = tonumber(ARGV[4])
+if n <= keep then return 0 end
+local victims = redis.call('ZRANGE', KEYS[1], 0, n - keep - 1)
+for _, v in ipairs(victims) do
+  redis.call('ZREM', KEYS[1], v)
+  redis.call('SREM', KEYS[2], v)
+  redis.call('DEL', ARGV[5] .. v, ARGV[6] .. v)
+end
+return #victims
+`;
+
 function parseComment(raw: unknown): Comment | null {
   if (typeof raw !== "string") return null;
   try {
@@ -239,19 +262,6 @@ export function createRedisStore(cfg: RedisConfig): PagedThreadStore {
     return out;
   }
 
-  async function evictOverflow(episodeId: string, card: number): Promise<void> {
-    if (card <= retention) return;
-    const [old] = await r.pipeline([["ZRANGE", K.thread(episodeId), 0, card - retention - 1]]);
-    if (!Array.isArray(old) || old.length === 0) return;
-    const ids = old.map(String);
-    // ZREM by member (not by rank) so concurrent evictions never remove newer comments.
-    await r.pipeline([
-      ["ZREM", K.thread(episodeId), ...ids],
-      ["SREM", K.hidden(episodeId), ...ids],
-      ["DEL", ...ids.map(K.comment), ...ids.map(K.reporters)],
-    ]);
-  }
-
   async function tally(episodeId: string): Promise<ReactionCounts> {
     const [vals] = await r.pipeline([["HVALS", K.votes(episodeId)]]);
     const counts = emptyCounts();
@@ -287,12 +297,11 @@ export function createRedisStore(cfg: RedisConfig): PagedThreadStore {
         throw new RateLimitError(Math.max(1, Math.ceil(((bucket + 1) * RATE_LIMIT_WINDOW_MS - t) / 1000)));
       }
       const comment = buildComment(episodeId, c, t);
-      const [, , card] = await r.pipeline([
-        ["SET", K.comment(comment.id), JSON.stringify(comment)],
-        ["ZADD", K.thread(episodeId), comment.createdAt, comment.id],
-        ["ZCARD", K.thread(episodeId)],
-      ]);
-      await evictOverflow(episodeId, Number(card));
+      // Insert + retention trim in one atomic script, so concurrent adds can never over-evict.
+      await r.pipeline([[
+        "EVAL", ADD_AND_TRIM_LUA, 3, K.thread(episodeId), K.hidden(episodeId), K.comment(comment.id),
+        comment.createdAt, comment.id, JSON.stringify(comment), retention, K.comment(""), K.reporters(""),
+      ]]);
       return comment;
     },
     async react(episodeId, reaction, authorId) {

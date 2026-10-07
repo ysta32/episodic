@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HIDE_AT_REPORTS, moderate } from "./moderation";
-import { createMemoryStore, createRedisStore, RateLimitError, NotFoundError, RATE_LIMIT_MAX, LIST_LIMIT, type PagedThreadStore } from "./store";
+import { ADD_AND_TRIM_LUA, createMemoryStore, createRedisStore, RateLimitError, NotFoundError, RATE_LIMIT_MAX, LIST_LIMIT, type PagedThreadStore } from "./store";
 import type { Comment, NewComment, ReactionCounts } from "./types";
 import { GET, POST } from "@/app/api/threads/[episodeId]/route";
 import { POST as REPORT } from "@/app/api/report/route";
@@ -140,6 +140,24 @@ function fakeUpstash() {
       case "SMEMBERS": return [...(sets.get(k) ?? [])];
       case "HSET": { const h = hashes.get(k) ?? new Map(); h.set(a[0], a[1]); hashes.set(k, h); return 1; }
       case "HVALS": return [...(hashes.get(k)?.values() ?? [])];
+      case "EVAL": {
+        // Simulates ADD_AND_TRIM_LUA step-for-step. The fake is single-threaded, so each EVAL
+        // runs to completion before the next command, matching Redis script atomicity.
+        expect(k).toBe(ADD_AND_TRIM_LUA);
+        const [nkeys, zkey, hkey, ckey, score, id, json, keep, cpre, rpre] = a;
+        expect(nkeys).toBe("3");
+        exec(["SET", ckey, json]);
+        exec(["ZADD", zkey, score, id]);
+        const n = Number(exec(["ZCARD", zkey]));
+        if (n <= Number(keep)) return 0;
+        const victims = exec(["ZRANGE", zkey, "0", String(n - Number(keep) - 1)]) as string[];
+        for (const v of victims) {
+          exec(["ZREM", zkey, v]);
+          exec(["SREM", hkey, v]);
+          exec(["DEL", cpre + v, rpre + v]);
+        }
+        return victims.length;
+      }
       default: return { __err: `unknown ${op}` };
     }
   };
@@ -257,6 +275,32 @@ describe("pagination + retention", () => {
     expect(fake.sets.has(`ep:reporters:${ids[5]}`)).toBe(false);
     expect(fake.sets.get("ep:hidden:ep:rt")?.has(ids[5])).toBe(false);
     expect(fake.zsets.get("ep:zthread:ep:rt")?.size).toBe(10);
+  });
+});
+
+describe("redis add+trim script", () => {
+  it("does insert, trim, and victim cleanup inside one EVAL (atomic)", async () => {
+    const calls: string[][][] = [];
+    const base = fakeUpstash();
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push(JSON.parse(String(init?.body)) as string[][]);
+      return base.fetchImpl(url, init);
+    }) as typeof fetch;
+    let t = 0;
+    const s = createRedisStore({ url: "https://x.upstash.io", token: "t", fetchImpl, now: () => (t += 1000), retention: 2 });
+    for (let k = 0; k < 4; k++) await s.add("ep:lua", nc({ authorId: `author-${k}-xx` }));
+    const writes = calls.flat().filter((c) => c[0] !== "INCR" && c[0] !== "EXPIRE");
+    expect(writes.map((c) => c[0])).toEqual(["EVAL", "EVAL", "EVAL", "EVAL"]);
+    expect(base.zsets.get("ep:zthread:ep:lua")?.size).toBe(2);
+    for (const op of ["SET", "ZADD", "ZCARD", "ZRANGE", "ZREM", "SREM", "DEL"]) expect(ADD_AND_TRIM_LUA).toContain(`'${op}'`);
+  });
+
+  it("concurrent adds never trim below retention", async () => {
+    const fake = fakeUpstash();
+    const s = createRedisStore({ url: "https://x.upstash.io", token: "t", fetchImpl: fake.fetchImpl, retention: 5 });
+    await Promise.all(Array.from({ length: 12 }, (_, k) => s.add("ep:cc", nc({ authorId: `author-${k}-xx` }))));
+    expect(fake.zsets.get("ep:zthread:ep:cc")?.size).toBe(5);
+    expect([...fake.kv.keys()].filter((key) => key.startsWith("ep:comment:"))).toHaveLength(5);
   });
 });
 
