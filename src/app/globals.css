@@ -1,26 +1,206 @@
 @import "tailwindcss";
+@import "../design/tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/*
+ * Compatibility aliases for app screens that predate Kinescope (lists, profile, supporter).
+ * They map the starter names onto Kinescope tokens until those screens are restyled.
+ * New code must use the Kinescope names (text-text-2, border-line, ...).
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--k-text-2);
+  --color-border: var(--k-line);
+  --color-accent2: var(--k-info);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ---------------------------------------------------------------------------
+ * Marketing: depth and texture (DESIGN.md §4.2: no gradients except scrims;
+ * light is modelled as a tungsten key light and film grain, not a blob).
+ * ------------------------------------------------------------------------- */
+
+/* Film grain: a tiny SVG turbulence tile, multiplied over the surface. Static (no animation). */
+.k-grain {
+  position: relative;
+  isolation: isolate;
+}
+.k-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.11;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0 0.05 0 0 0 1.1 -0.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+}
+:root[data-theme="dark"] .k-grain::after {
+  mix-blend-mode: screen;
+  opacity: 0.07;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .k-grain::after {
+    mix-blend-mode: screen;
+    opacity: 0.07;
+  }
+}
+
+/* Tungsten key light: a soft pool of warm light falling from the top-right, like a stage lamp. */
+.k-keylight {
+  background-image: radial-gradient(
+    ellipse 70% 60% at 82% -10%,
+    color-mix(in oklab, var(--k-accent) 22%, transparent) 0%,
+    transparent 70%
+  );
+}
+
+/* Projector gate: thin sprocket marks used as a section divider. */
+.k-sprockets {
+  height: 10px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--k-line-strong) 0 14px,
+    transparent 14px 28px
+  );
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  opacity: 0.6;
+}
+
+/* ---------------------------------------------------------------------------
+ * Scroll reveals. Content is fully visible without JS: the hidden start state
+ * only applies once <Reveal> sets html[data-reveal="on"]. Each element can set
+ * --k-delay for a staggered entrance. Transform and opacity only.
+ * ------------------------------------------------------------------------- */
+:root[data-reveal="on"] [data-reveal] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 560ms var(--k-ease-out) var(--k-delay, 0ms),
+    transform 720ms var(--k-ease-out) var(--k-delay, 0ms);
+}
+:root[data-reveal="on"] [data-reveal="cut"] {
+  transform: translateY(0) scale(0.985);
+}
+:root[data-reveal="on"] [data-reveal][data-shown] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Hero "cut in": headline lines rise from behind a hard mask, like a title card. */
+@keyframes k-title-cut {
+  from {
+    transform: translateY(105%);
+  }
+  to {
+    transform: none;
+  }
+}
+.k-title-line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+  margin-bottom: -0.08em;
+}
+.k-title-line > span {
+  display: inline-block;
+  animation: k-title-cut 820ms var(--k-ease-out) both;
+  animation-delay: var(--k-delay, 0ms);
+}
+
+@keyframes k-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.k-rise {
+  animation: k-rise 640ms var(--k-ease-out) both;
+  animation-delay: var(--k-delay, 0ms);
+}
+
+/* Spoiler Shield preview: redacted until the reader chooses to reveal. */
+.k-redact {
+  filter: blur(6px);
+  transition:
+    filter var(--k-dur-3) var(--k-ease-out),
+    opacity var(--k-dur-3) var(--k-ease-out);
+  opacity: 0.7;
+  user-select: none;
+}
+.k-redact[data-revealed] {
+  filter: none;
+  opacity: 1;
+  user-select: auto;
+}
+
+/* Episode Pulse sparkline draws on reveal. */
+.k-pulse-line {
+  stroke-dasharray: 400;
+  stroke-dashoffset: 0;
+}
+:root[data-reveal="on"] [data-reveal] .k-pulse-line {
+  stroke-dashoffset: 400;
+  transition: stroke-dashoffset 1400ms var(--k-ease-in-out) calc(var(--k-delay, 0ms) + 200ms);
+}
+:root[data-reveal="on"] [data-reveal][data-shown] .k-pulse-line {
+  stroke-dashoffset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-reveal="on"] [data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+  .k-title-line > span,
+  .k-rise {
+    animation: none;
+  }
+  .k-redact {
+    transition: none;
+  }
+}
+:root[data-motion="reduce"] [data-reveal] {
+  opacity: 1 !important;
+  transform: none !important;
+}
+:root[data-motion="reduce"] .k-title-line > span,
+:root[data-motion="reduce"] .k-rise {
+  animation: none;
+}
+
+/* "Lights down": a band that is always projected in ink, in either theme (the shutdown section). */
+.k-ink {
+  color-scheme: dark;
+  --k-bg: #0b0a09;
+  --k-surface: #161411;
+  --k-surface-2: #201d19;
+  --k-line: #2a2621;
+  --k-line-strong: #3d382f;
+  --k-text: #f2ede3;
+  --k-text-2: #aba393;
+  --k-text-3: #7a7366;
+  --k-accent: #f0aa3c;
+  --k-accent-ink: #f5b95a;
+  --k-accent-wash: #3a2a12;
+  --k-danger: #f06a4f;
+  --k-danger-wash: #3d1a12;
+  --k-highlight: rgb(255 255 255 / 0.06);
+  background-color: var(--k-bg);
+  color: var(--k-text);
+}
+.k-ink.k-grain::after {
+  mix-blend-mode: screen;
+  opacity: 0.08;
 }

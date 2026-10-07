@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "shots": "node scripts/shots.mjs"
   },
   "dependencies": {
     "dexie": "^4.4.6",
@@ -39,5 +40,6 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.7"
-  }
+  },
+  "license": "MIT"
 }

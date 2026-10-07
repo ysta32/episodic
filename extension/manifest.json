@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Episodic Scrobbler",
+  "version": "0.1.0",
+  "description": "Scrobble Netflix, Hulu, and Max playback to Episodic.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://*.netflix.com/*", "https://*.hulu.com/*", "https://max.com/*", "https://play.max.com/*"],
+  "background": { "service_worker": "src/background.js", "type": "module" },
+  "action": { "default_popup": "src/popup.html" },
+  "content_scripts": [{
+    "matches": ["https://*.netflix.com/*", "https://*.hulu.com/*", "https://max.com/*", "https://play.max.com/*"],
+    "js": ["src/content.js"],
+    "run_at": "document_idle"
+  }],
+  "web_accessible_resources": [{
+    "resources": ["src/detectors.js"],
+    "matches": ["https://*.netflix.com/*", "https://*.hulu.com/*", "https://max.com/*", "https://play.max.com/*"]
+  }]
+}

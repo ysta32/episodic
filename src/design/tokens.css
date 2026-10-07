@@ -1,0 +1,444 @@
+/*
+ * Kinescope design tokens (Episodic). See docs/DESIGN.md.
+ * Import once from globals.css, after `@import "tailwindcss";`.
+ * Theme: light by default, dark via prefers-color-scheme, explicit override via <html data-theme="light|dark">.
+ * Motion: reduced via prefers-reduced-motion or <html data-motion="reduce">.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Film stock: light (paper) */
+  --k-bg: #f4f0e8;
+  --k-surface: #fbf8f2;
+  --k-surface-2: #ece6da;
+  --k-surface-3: #e2dacb;
+  --k-line: #dcd4c4;
+  --k-line-strong: #c4baa6;
+  --k-text: #1a1814;
+  --k-text-2: #5e574b;
+  --k-text-3: #857c6c;
+  --k-accent: #e59a2b;
+  --k-accent-hover: #d98c1c;
+  --k-accent-ink: #8a5300;
+  --k-accent-wash: #f6e3c2;
+  --k-on-accent: #1a1206;
+  --k-danger: #c2381f;
+  --k-danger-wash: #f6dcd4;
+  --k-success: #2a7247;
+  --k-success-wash: #d8ebdc;
+  --k-info: #1f6f86;
+  --k-info-wash: #d5e8ec;
+  --k-scrim: rgb(16 15 13 / 0.55);
+  --k-highlight: rgb(255 255 255 / 0.6);
+  --k-selection: rgb(229 154 43 / 0.32);
+  --k-skeleton: #e6dfd2;
+  --k-skeleton-sheen: #f1ebe0;
+
+  --k-shadow-1: 0 1px 0 rgb(60 44 20 / 0.06), 0 1px 3px rgb(60 44 20 / 0.08);
+  --k-shadow-2: 0 2px 4px rgb(60 44 20 / 0.06), 0 8px 24px rgb(60 44 20 / 0.12);
+  --k-shadow-3: 0 4px 8px rgb(60 44 20 / 0.08), 0 24px 64px rgb(60 44 20 / 0.22);
+
+  /* Type */
+  --k-font-display: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
+  --k-font-text: var(--font-schibsted), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --k-font-mono: var(--font-martian), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --k-text-xs: 0.75rem;
+  --k-text-sm: 0.8125rem;
+  --k-text-base: 0.9375rem;
+  --k-text-md: 1.0625rem;
+  --k-text-lg: 1.25rem;
+  --k-text-xl: 1.5rem;
+  --k-text-2xl: clamp(1.75rem, 1.2rem + 2vw, 2.25rem);
+  --k-text-3xl: clamp(2.25rem, 1.4rem + 3.5vw, 3.5rem);
+  --k-text-hero: clamp(2.75rem, 1.2rem + 6.5vw, 6rem);
+
+  /* Radius */
+  --k-radius-xs: 3px;
+  --k-radius-sm: 6px;
+  --k-radius-md: 10px;
+  --k-radius-lg: 16px;
+  --k-radius-pill: 999px;
+
+  /* Motion: cut, don't dissolve */
+  --k-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --k-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --k-ease-snap: cubic-bezier(0.3, 1.4, 0.5, 1);
+  --k-dur-1: 90ms;
+  --k-dur-2: 160ms;
+  --k-dur-3: 240ms;
+  --k-dur-4: 420ms;
+
+  /* Layout */
+  --k-gutter: 16px;
+  --k-sidebar: 240px;
+  --k-content-max: 1120px;
+  --k-measure: 68ch;
+  --k-focus-ring: 0 0 0 2px var(--k-bg), 0 0 0 4px var(--k-accent-ink);
+}
+
+@media (min-width: 640px) {
+  :root {
+    --k-gutter: 24px;
+  }
+}
+@media (min-width: 1024px) {
+  :root {
+    --k-gutter: 32px;
+  }
+}
+@media (min-width: 1440px) {
+  :root {
+    --k-content-max: 1280px;
+  }
+}
+@media (min-width: 1920px) {
+  :root {
+    --k-gutter: 40px;
+    --k-content-max: 1440px;
+  }
+}
+
+/* Film stock: dark (ink). Duplicated for the media query and the explicit override. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --k-bg: #100f0d;
+  --k-surface: #191714;
+  --k-surface-2: #22201c;
+  --k-surface-3: #2c2924;
+  --k-line: #302c26;
+  --k-line-strong: #454036;
+  --k-text: #f2ede3;
+  --k-text-2: #aba393;
+  --k-text-3: #7a7366;
+  --k-accent: #f0aa3c;
+  --k-accent-hover: #f5b955;
+  --k-accent-ink: #f5b95a;
+  --k-accent-wash: #3a2a12;
+  --k-on-accent: #1a1206;
+  --k-danger: #f06a4f;
+  --k-danger-wash: #3d1a12;
+  --k-success: #5bc489;
+  --k-success-wash: #15301f;
+  --k-info: #62b6cc;
+  --k-info-wash: #12303a;
+  --k-scrim: rgb(0 0 0 / 0.66);
+  --k-highlight: rgb(255 255 255 / 0.06);
+  --k-selection: rgb(240 170 60 / 0.3);
+  --k-skeleton: #211f1b;
+  --k-skeleton-sheen: #2b2823;
+  --k-shadow-1: 0 1px 0 rgb(0 0 0 / 0.4);
+  --k-shadow-2: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px rgb(0 0 0 / 0.5);
+  --k-shadow-3: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 24px 64px rgb(0 0 0 / 0.65);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --k-bg: #100f0d;
+    --k-surface: #191714;
+    --k-surface-2: #22201c;
+    --k-surface-3: #2c2924;
+    --k-line: #302c26;
+    --k-line-strong: #454036;
+    --k-text: #f2ede3;
+    --k-text-2: #aba393;
+    --k-text-3: #7a7366;
+    --k-accent: #f0aa3c;
+    --k-accent-hover: #f5b955;
+    --k-accent-ink: #f5b95a;
+    --k-accent-wash: #3a2a12;
+    --k-on-accent: #1a1206;
+    --k-danger: #f06a4f;
+    --k-danger-wash: #3d1a12;
+    --k-success: #5bc489;
+    --k-success-wash: #15301f;
+    --k-info: #62b6cc;
+    --k-info-wash: #12303a;
+    --k-scrim: rgb(0 0 0 / 0.66);
+    --k-highlight: rgb(255 255 255 / 0.06);
+    --k-selection: rgb(240 170 60 / 0.3);
+    --k-skeleton: #211f1b;
+    --k-skeleton-sheen: #2b2823;
+    --k-shadow-1: 0 1px 0 rgb(0 0 0 / 0.4);
+    --k-shadow-2: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px rgb(0 0 0 / 0.5);
+    --k-shadow-3: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 24px 64px rgb(0 0 0 / 0.65);
+  }
+}
+
+/* Tailwind v4 utilities: bg-surface, text-text-2, border-line, font-display, rounded-k-md, shadow-k-2, ease-k-out ... */
+@theme inline {
+  --color-bg: var(--k-bg);
+  --color-surface: var(--k-surface);
+  --color-surface-2: var(--k-surface-2);
+  --color-surface-3: var(--k-surface-3);
+  --color-line: var(--k-line);
+  --color-line-strong: var(--k-line-strong);
+  --color-text: var(--k-text);
+  --color-text-2: var(--k-text-2);
+  --color-text-3: var(--k-text-3);
+  --color-accent: var(--k-accent);
+  --color-accent-hover: var(--k-accent-hover);
+  --color-accent-ink: var(--k-accent-ink);
+  --color-accent-wash: var(--k-accent-wash);
+  --color-on-accent: var(--k-on-accent);
+  --color-danger: var(--k-danger);
+  --color-danger-wash: var(--k-danger-wash);
+  --color-success: var(--k-success);
+  --color-success-wash: var(--k-success-wash);
+  --color-info: var(--k-info);
+  --color-info-wash: var(--k-info-wash);
+  --color-scrim: var(--k-scrim);
+  /* Legacy names used by the starter template */
+  --color-background: var(--k-bg);
+  --color-foreground: var(--k-text);
+
+  --font-display: var(--k-font-display);
+  --font-sans: var(--k-font-text);
+  --font-text: var(--k-font-text);
+  --font-mono: var(--k-font-mono);
+
+  --text-k-xs: var(--k-text-xs);
+  --text-k-sm: var(--k-text-sm);
+  --text-k-base: var(--k-text-base);
+  --text-k-md: var(--k-text-md);
+  --text-k-lg: var(--k-text-lg);
+  --text-k-xl: var(--k-text-xl);
+  --text-k-2xl: var(--k-text-2xl);
+  --text-k-3xl: var(--k-text-3xl);
+  --text-k-hero: var(--k-text-hero);
+
+  --radius-k-xs: var(--k-radius-xs);
+  --radius-k-sm: var(--k-radius-sm);
+  --radius-k-md: var(--k-radius-md);
+  --radius-k-lg: var(--k-radius-lg);
+  --radius-k-pill: var(--k-radius-pill);
+
+  --shadow-k-1: var(--k-shadow-1);
+  --shadow-k-2: var(--k-shadow-2);
+  --shadow-k-3: var(--k-shadow-3);
+
+  --ease-k-out: var(--k-ease-out);
+  --ease-k-in-out: var(--k-ease-in-out);
+  --ease-k-snap: var(--k-ease-snap);
+
+  --breakpoint-3xl: 120rem;
+}
+
+/* Base */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-family: var(--k-font-text);
+  font-size: var(--k-text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01" on;
+}
+
+::selection {
+  background: var(--k-selection);
+  color: var(--k-text);
+}
+
+/* Focus: visible for keyboard users only, consistent everywhere */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus {
+  outline: none;
+}
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--k-focus-ring);
+  border-radius: var(--k-radius-sm);
+}
+
+/* Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--k-line-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--k-line-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--k-text-3);
+}
+
+/* Skeleton shimmer */
+@keyframes k-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+.k-skeleton {
+  background-color: var(--k-skeleton);
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    var(--k-skeleton-sheen) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: k-shimmer 1.4s var(--k-ease-in-out) infinite;
+}
+
+@keyframes k-enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes k-enter-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes k-enter-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes k-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes k-sheet-left {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes k-stamp {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.k-enter-up {
+  animation: k-enter-up var(--k-dur-2) var(--k-ease-out) both;
+}
+.k-enter-fade {
+  animation: k-enter-fade var(--k-dur-2) var(--k-ease-out) both;
+}
+.k-enter-scale {
+  animation: k-enter-scale var(--k-dur-3) var(--k-ease-out) both;
+}
+.k-stamp path {
+  stroke-dasharray: 24;
+  animation: k-stamp var(--k-dur-3) var(--k-ease-snap) both;
+}
+
+/* Native <dialog> backdrop */
+dialog.k-dialog::backdrop {
+  background: var(--k-scrim);
+  animation: k-enter-fade var(--k-dur-2) var(--k-ease-out) both;
+}
+dialog.k-dialog {
+  animation: k-enter-scale var(--k-dur-3) var(--k-ease-out) both;
+}
+dialog.k-sheet-bottom {
+  animation: k-sheet-up var(--k-dur-3) var(--k-ease-in-out) both;
+}
+@media (min-width: 768px) {
+  dialog.k-sheet-bottom {
+    animation-name: k-sheet-left;
+  }
+}
+
+/* Utility: tabular numbers and the broadcast "slate" label */
+.k-tabular {
+  font-variant-numeric: tabular-nums;
+}
+.k-slate {
+  font-family: var(--k-font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Reduced motion: system preference or in-app setting */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --k-dur-1: 0.01ms;
+    --k-dur-2: 0.01ms;
+    --k-dur-3: 0.01ms;
+    --k-dur-4: 0.01ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .k-skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
+:root[data-motion="reduce"] {
+  --k-dur-1: 0.01ms;
+  --k-dur-2: 0.01ms;
+  --k-dur-3: 0.01ms;
+  --k-dur-4: 0.01ms;
+}
+:root[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+:root[data-motion="reduce"] .k-skeleton {
+  animation: none;
+  background-image: none;
+}
+
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid CanvasText;
+    box-shadow: none;
+  }
+}
