@@ -104,4 +104,5 @@ export interface Settings {
   supporter: boolean;
   syncEnabled: boolean;
   theme: "system" | "dark" | "light";
+  supporterWaitlist?: boolean;
 }
