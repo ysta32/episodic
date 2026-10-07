@@ -30,7 +30,7 @@ function Eyebrow({ n, children }: { n: string; children: ReactNode }) {
 const PROOF: { icon: IconName; title: string; body: ReactNode }[] = [
   {
     icon: "external",
-    title: "Open source",
+    title: "Open source, MIT licensed",
     body: (
       <>
         Every line is public. Read how import and storage work, or run your own copy.{" "}
@@ -127,7 +127,7 @@ export default function Home() {
             <ul className="k-rise k-slate flex flex-wrap gap-x-6 gap-y-2 border-t border-line pt-5 text-text-3" style={delay(760)}>
               <li>Free, no ads</li>
               <li>Local-first</li>
-              <li>Open source</li>
+              <li>Open source (MIT)</li>
               <li>No account needed</li>
               <li>Works offline</li>
             </ul>

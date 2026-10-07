@@ -4,6 +4,7 @@ import { Icon } from "@/components/ui/Icon";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { cx } from "@/components/ui/cx";
 import { REACTIONS, type Reaction } from "@/lib/social/types";
+import { SpoilerRow } from "./SpoilerRow";
 
 /*
  * Live product previews rendered with the real Kinescope primitives and static sample data.
@@ -96,26 +97,11 @@ export function EpisodeListPreview() {
         {EPISODES.map((ep) => (
           <li key={ep.n} className="relative">
             {ep.state === "shielded" ? (
-              <div className="flex items-start gap-3 px-4 py-3.5">
-                <input id="k-shield-demo" type="checkbox" className="peer sr-only" />
-                <span className="k-slate mt-1 w-11 shrink-0 text-text-3">E{pad(ep.n)}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="k-redact text-k-base font-medium" aria-hidden>
-                    {ep.title}
-                  </p>
-                  <p className="k-redact mt-1 text-k-sm text-text-2" aria-hidden>
-                    Lumon&apos;s next move lands where the team least expects it.
-                  </p>
-                  <span className="sr-only">Episode title and synopsis hidden by Spoiler Shield.</span>
-                </div>
-                <label
-                  htmlFor="k-shield-demo"
-                  className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-k-sm border border-line-strong px-2.5 text-k-xs font-semibold text-text-2 transition-colors duration-(--k-dur-1) hover:bg-surface-2 hover:text-text peer-focus-visible:shadow-(--k-focus-ring)"
-                >
-                  <Icon name="eye" size={14} />
-                  Reveal
-                </label>
-              </div>
+              <SpoilerRow
+                slate={`E${pad(ep.n)}`}
+                title={ep.title}
+                synopsis="Lumon's next move lands where the team least expects it."
+              />
             ) : (
               <div className={cx("flex items-center gap-3 px-4 py-3.5", ep.state === "next" && "bg-accent-wash/50")}>
                 <span className="k-slate w-11 shrink-0 text-text-3">E{pad(ep.n)}</span>

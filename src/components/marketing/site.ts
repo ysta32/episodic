@@ -18,7 +18,7 @@ export const PRICE_MONTHLY = formatPrice(SUPPORTER_PRICE.monthly);
 export const PRICE_YEARLY = formatPrice(SUPPORTER_PRICE.yearly);
 
 /** What a TV Time export can bring across. Reactions and comments are not part of it. */
-export const MIGRATES = ["Watch history with dates", "Episode and show ratings", "Followed shows and watchlist", "Lists"] as const;
+export const MIGRATES = ["Watch history with dates", "Episode and show ratings", "Followed shows and watchlist"] as const;
 
 export interface FaqItem {
   q: string;
@@ -36,7 +36,7 @@ export const FAQS: readonly FaqItem[] = [
   },
   {
     q: "What comes across from TV Time?",
-    a: "Your watch history with dates, your ratings, the shows you followed and your watchlist, and your lists. TV Time reactions and comments do not come across. Episodic has its own per-episode reactions, and they start fresh.",
+    a: "Your watch history with dates, your ratings, and the shows you followed and your watchlist. TV Time reactions and comments do not come across. Episodic has its own per-episode reactions, and they start fresh.",
   },
   {
     q: "How do I move my TV Time history over?",
@@ -48,7 +48,7 @@ export const FAQS: readonly FaqItem[] = [
   },
   {
     q: "Can I also import from Trakt, Simkl, Letterboxd or IMDb?",
-    a: "Yes. Episodic reads Trakt and Simkl exports, Letterboxd and IMDb CSV files, and a generic CSV.",
+    a: "Yes. Episodic reads Trakt and Simkl exports, Letterboxd and IMDb CSV files, and a generic CSV. Lists come across from Trakt and Letterboxd.",
   },
   {
     q: "Does it work on my phone?",

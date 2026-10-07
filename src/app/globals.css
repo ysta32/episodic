@@ -139,8 +139,7 @@ html {
   opacity: 0.7;
   user-select: none;
 }
-.peer:checked ~ * .k-redact,
-.peer:checked ~ .k-redact {
+.k-redact[data-revealed] {
   filter: none;
   opacity: 1;
   user-select: auto;

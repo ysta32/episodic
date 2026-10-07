@@ -5,7 +5,7 @@ import { useCallback, useId, useRef, useState, type DragEvent } from "react";
 import { buttonClasses } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { cx } from "@/components/ui/cx";
-import type { ImportBundle, InputFile } from "@/lib/import/types";
+import type { ImportBundle, ImportedItem, InputFile } from "@/lib/import/types";
 import { IMPORT_HREF } from "./site";
 
 /*
@@ -51,12 +51,16 @@ function summarize(b: ImportBundle, ms: number): Summary {
     }
   }
   const showTitles = new Set(perShow.keys());
-  let movies = 0;
+  // A rated or watchlisted movie can appear both as an item and as a watch: count each film once.
+  const movieKeys = new Set<string>();
+  const movieKey = (m: { title: string; year?: number; ids: ImportedItem["ids"] }) =>
+    m.ids.imdb ? `imdb:${m.ids.imdb}` : m.ids.tmdb !== undefined ? `tmdb:${m.ids.tmdb}` : `t:${m.title.toLowerCase()}|${m.year ?? ""}`;
   for (const i of b.items) {
     if (i.kind === "show") showTitles.add(i.title);
-    else movies++;
+    else movieKeys.add(movieKey(i));
   }
-  for (const w of b.watches) if (w.kind === "movie") movies++;
+  for (const w of b.watches) if (w.kind === "movie") movieKeys.add(movieKey(w));
+  const movies = movieKeys.size;
   const top = [...perShow].sort((a, z) => z[1] - a[1]).slice(0, 3).map(([title, count]) => ({ title, count }));
   return {
     shows: showTitles.size,

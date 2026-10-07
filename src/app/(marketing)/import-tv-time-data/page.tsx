@@ -58,7 +58,7 @@ export default function Page() {
 
         <h2>What gets imported</h2>
         <p>
-          Episodic restores the things that make a tracker useful: your watch history with dates, ratings where the file includes them, the shows you follow and your watchlist, favorites, and lists. Because Episodic is local-first, the import runs in your browser. Your archive is not uploaded to a server for processing, and the data lands in your own library on your device.
+          Episodic restores the things that make a tracker useful: your watch history with dates, ratings where the file includes them, the shows you follow and your watchlist, and favorites. TV Time lists aren&apos;t part of the import. Because Episodic is local-first, the import runs in your browser. Your archive is not uploaded to a server for processing, and the data lands in your own library on your device.
         </p>
         <p>
           What doesn&apos;t come across: your TV Time reactions and comments. Episodic has its own per-episode reactions and threads, so you can keep reacting from here on, but those start fresh.

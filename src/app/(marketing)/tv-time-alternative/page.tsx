@@ -51,7 +51,7 @@ export default function Page() {
 
         <h2>Episodic</h2>
         <p>
-          Episodic was built for exactly this moment. It is free, <a href={REPO_URL}>open source</a> and local-first, which means your library lives on your own device and keeps working offline. It reads a TV Time export directly in your browser (watch history, ratings, watchlists and lists), imports from Trakt, Simkl, Letterboxd and IMDb, and has its own per-episode reactions. Your old TV Time reactions and comments don&apos;t come across, but the habit can carry on. You can install it as a PWA and export all your data whenever you like.
+          Episodic was built for exactly this moment. It is free, <a href={REPO_URL}>open source</a> and local-first, which means your library lives on your own device and keeps working offline. It reads a TV Time export directly in your browser (watch history, ratings and watchlists), imports from Trakt, Simkl, Letterboxd and IMDb (including Trakt and Letterboxd lists), and has its own per-episode reactions. Your old TV Time reactions and comments don&apos;t come across, but the habit can carry on. You can install it as a PWA and export all your data whenever you like.
         </p>
         <p>
           To be fair, Episodic is new. Its catalog and community are smaller than Trakt&apos;s, and it has no media center plugin ecosystem yet. If that matters to you, you can import to Episodic now and still keep a Trakt account.
