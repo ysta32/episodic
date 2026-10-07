@@ -17,9 +17,17 @@ import { db } from "@/lib/db";
 import { IMPORTERS } from "@/lib/import";
 import type { ImportBundle, InputFile } from "@/lib/import/types";
 import { expandZips } from "@/lib/import/zip";
-import { applyImport, type ApplyImportResult } from "@/lib/library";
+import { parseBackup } from "@/lib/export";
+import {
+  applyImport,
+  restoreBackup,
+  type ApplyImportResult,
+} from "@/lib/library";
+
 import { clientProvider } from "@/lib/meta";
 import type { ImportSource } from "@/lib/types";
+
+type BackupCounts = Awaited<ReturnType<typeof restoreBackup>>;
 
 const sources: ImportSource[] = [
   "tvtime",
@@ -41,6 +49,11 @@ export default function ImportWizard({
   const [source, setSource] = useState(initialSource);
   const [files, setFiles] = useState<File[]>([]);
   const [bundle, setBundle] = useState<ImportBundle | null>(null);
+  const [backup, setBackup] = useState<{
+    text: string;
+    counts: BackupCounts;
+  } | null>(null);
+  const [restored, setRestored] = useState<BackupCounts | null>(null);
   const [result, setResult] = useState<ApplyImportResult | null>(null);
   const [phase, setPhase] = useState<
     "choose" | "parsing" | "preview" | "importing" | "done"
@@ -78,6 +91,8 @@ export default function ImportWizard({
     setSource(next);
     setFiles([]);
     setBundle(null);
+    setBackup(null);
+    setRestored(null);
     setResult(null);
     setPhase("choose");
     setError("");
@@ -90,11 +105,31 @@ export default function ImportWizard({
     locked.current = true;
     setFiles(selected);
     setBundle(null);
+    setBackup(null);
+    setRestored(null);
     setResult(null);
     setError("");
     setCopyMessage("");
     setPhase("parsing");
     try {
+      if (source === "episodic") {
+        if (selected.length !== 1 || !/\.json$/i.test(selected[0].name)) {
+          throw new Error("Choose one Episodic JSON backup.");
+        }
+        const text = await selected[0].text();
+        const parsed = parseBackup(text);
+        setBackup({
+          text,
+          counts: {
+            library: parsed.library.length,
+            watches: parsed.watches.length,
+            ratings: parsed.ratings.length,
+            lists: parsed.lists.length,
+          },
+        });
+        setPhase("preview");
+        return;
+      }
       if (selected.some((file) => !/\.(zip|csv|json)$/i.test(file.name))) {
         throw new Error("Choose ZIP, CSV, or JSON files from your export.");
       }
@@ -118,8 +153,8 @@ export default function ImportWizard({
   }
 
   async function importHistory() {
-    if (!bundle || locked.current) return;
-    if (!navigator.onLine) {
+    if (locked.current || (source === "episodic" ? !backup : !bundle)) return;
+    if (source !== "episodic" && !navigator.onLine) {
       setError(
         "You're offline. Your preview is ready; reconnect, then retry the import to match your titles.",
       );
@@ -130,6 +165,12 @@ export default function ImportWizard({
     setError("");
     setProgress({ done: 0, total: 1 });
     try {
+      if (source === "episodic" && backup) {
+        setRestored(await restoreBackup(backup.text));
+        setPhase("done");
+        return;
+      }
+      if (!bundle) return;
       const imported = await applyImport(
         bundle,
         clientProvider(),
@@ -137,9 +178,11 @@ export default function ImportWizard({
       );
       setResult(imported);
       setPhase("done");
-    } catch {
+    } catch (cause) {
       setError(
-        "Couldn't save your import. Your existing history is safe. Retry the import; duplicate watches won't be added.",
+        source === "episodic"
+          ? `${cause instanceof Error ? cause.message : "Couldn't restore your backup."} Your existing history is safe. Retry or choose another backup.`
+          : "Couldn't save your import. Your existing history is safe. Retry the import; duplicate watches won't be added.",
       );
       setPhase("preview");
     } finally {
@@ -167,26 +210,36 @@ export default function ImportWizard({
     !bundle.watches.length &&
     !bundle.episodeRatings.length &&
     !bundle.lists.length;
-  const summary = bundle
+  const summary = backup
     ? ([
-        ["Shows", bundle.items.filter((item) => item.kind === "show").length],
-        ["Movies", bundle.items.filter((item) => item.kind === "movie").length],
-        [
-          "Episodes watched",
-          bundle.watches.filter((watch) => watch.kind === "episode").length,
-        ],
-        [
-          "Movie watches",
-          bundle.watches.filter((watch) => watch.kind === "movie").length,
-        ],
-        [
-          "Ratings",
-          bundle.items.filter((item) => item.rating !== undefined).length +
-            bundle.episodeRatings.length,
-        ],
-        ["Lists", bundle.lists.length],
+        ["Library", backup.counts.library],
+        ["Watches", backup.counts.watches],
+        ["Ratings", backup.counts.ratings],
+        ["Lists", backup.counts.lists],
       ] as const)
-    : [];
+    : bundle
+      ? ([
+          ["Shows", bundle.items.filter((item) => item.kind === "show").length],
+          [
+            "Movies",
+            bundle.items.filter((item) => item.kind === "movie").length,
+          ],
+          [
+            "Episodes watched",
+            bundle.watches.filter((watch) => watch.kind === "episode").length,
+          ],
+          [
+            "Movie watches",
+            bundle.watches.filter((watch) => watch.kind === "movie").length,
+          ],
+          [
+            "Ratings",
+            bundle.items.filter((item) => item.rating !== undefined).length +
+              bundle.episodeRatings.length,
+          ],
+          ["Lists", bundle.lists.length],
+        ] as const)
+      : [];
 
   return (
     <section aria-labelledby="import-heading" className="space-y-6">
@@ -217,7 +270,8 @@ export default function ImportWizard({
           className="flex items-center gap-2 rounded-k-pill bg-surface-2 px-4 py-3 text-k-sm text-text-2"
         >
           <Icon name="offline" />
-          Offline · preview files and export locally. Reconnect to match titles.
+          Offline · preview files, restore backups, and export locally.
+          Reconnect to match titles.
         </p>
       )}
       {library?.error && (
@@ -289,8 +343,8 @@ export default function ImportWizard({
             ref={input}
             id="import-files"
             type="file"
-            multiple
-            accept={IMPORTERS[source].accept}
+            multiple={source !== "episodic"}
+            accept={source === "episodic" ? ".json" : IMPORTERS[source].accept}
             disabled={busy}
             aria-describedby="source-help"
             className={`min-h-11 w-full min-w-0 rounded-k-sm text-k-sm file:mr-3 file:min-h-11 file:rounded-k-sm file:border-0 file:bg-surface-2 file:px-3 file:text-text ${focusClass}`}
@@ -302,7 +356,9 @@ export default function ImportWizard({
           <p className="break-words text-k-sm text-text-2">
             {files.length
               ? files.map((file) => file.name).join(", ")
-              : "ZIP, CSV, or JSON. You can select several files together."}
+              : source === "episodic"
+                ? "Choose one JSON backup. Restore works offline."
+                : "ZIP, CSV, or JSON. You can select several files together."}
           </p>
         </div>
       </Card>
@@ -316,7 +372,9 @@ export default function ImportWizard({
             size="lg"
             variant="secondary"
             disabled={busy}
-            onClick={() => void (bundle ? importHistory() : parse(files))}
+            onClick={() =>
+              void (bundle || backup ? importHistory() : parse(files))
+            }
           >
             Retry
           </Button>
@@ -332,7 +390,7 @@ export default function ImportWizard({
           ))}
         </LoadingRegion>
       )}
-      {bundle && phase !== "done" && (
+      {(bundle || backup) && phase !== "done" && (
         <Card className="space-y-5">
           <h2 className="font-display text-k-xl">3. Review your history</h2>
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -343,7 +401,7 @@ export default function ImportWizard({
               </div>
             ))}
           </dl>
-          {bundle.warnings.length > 0 && (
+          {bundle && bundle.warnings.length > 0 && (
             <details className="rounded-k-sm bg-surface-2 p-3">
               <summary className={`min-h-11 cursor-pointer py-2 ${focusClass}`}>
                 {bundle.warnings.length} warnings to review
@@ -370,17 +428,20 @@ export default function ImportWizard({
           ) : (
             <>
               <p className="text-k-sm text-text-2">
-                This merges with your library. Existing ratings and statuses may
-                be updated. Download a backup below before importing.
+                {source === "episodic"
+                  ? "This restores your backup on this device. Matching records and settings are overwritten; other history is kept. Download a backup below before restoring."
+                  : "This merges with your library. Existing ratings and statuses may be updated. Download a backup below before importing."}
               </p>
               <Button
                 size="lg"
                 leadingIcon="import"
-                disabled={busy || offline || library?.error}
+                disabled={
+                  busy || (source !== "episodic" && offline) || library?.error
+                }
                 loading={phase === "importing"}
                 onClick={() => void importHistory()}
               >
-                Import
+                {source === "episodic" ? "Restore" : "Import"}
               </Button>
             </>
           )}
@@ -389,16 +450,38 @@ export default function ImportWizard({
       {phase === "importing" && (
         <div role="status" className="space-y-3">
           <p className="text-text-2">
-            Matching titles and saving your history… Keep this page open.
+            {source === "episodic"
+              ? "Restoring your backup… Keep this page open."
+              : "Matching titles and saving your history… Keep this page open."}
           </p>
-          <ProgressBar
-            value={progress.done}
-            max={progress.total}
-            label="Import progress"
-            valueText={`${progress.done} of ${progress.total} metadata steps`}
-            size="md"
-          />
+          {source !== "episodic" && (
+            <ProgressBar
+              value={progress.done}
+              max={progress.total}
+              label="Import progress"
+              valueText={`${progress.done} of ${progress.total} metadata steps`}
+              size="md"
+            />
+          )}
         </div>
+      )}
+      {restored && phase === "done" && (
+        <Card className="space-y-5">
+          <h2
+            role="status"
+            className="flex items-center gap-2 font-display text-k-xl"
+          >
+            <Icon name="check" className="text-success" />
+            Restore finished
+          </h2>
+          <p className="text-text-2">
+            Restored {restored.library} library entries, {restored.watches}{" "}
+            watches, {restored.ratings} ratings, and {restored.lists} lists.
+          </p>
+          <Button size="lg" variant="secondary" onClick={() => choose(source)}>
+            Restore another backup
+          </Button>
+        </Card>
       )}
       {result && phase === "done" && (
         <Card className="space-y-5">
