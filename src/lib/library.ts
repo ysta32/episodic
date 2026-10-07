@@ -504,17 +504,19 @@ export async function upNext(now: number = Date.now()): Promise<UpNextItem[]> {
     const eps = (await d.episodes.where("showId").equals(entry.id).toArray()).filter((e) => e.season > 0).sort(byOrder);
     const watches = await d.watches.where("showId").equals(entry.id).toArray();
     const watched = new Set(watches.map((w) => w.mediaId));
-    // Continue after the furthest watched episode (skipped gaps are not resurfaced).
+    // D-14: continue after the furthest watched episode (TV Time/Trakt behaviour); if nothing aired remains
+    // after it but earlier aired episodes are unwatched, surface the earliest gap instead of dropping the show.
     let lastIdx = -1;
     eps.forEach((e, i) => {
       if (watched.has(e.id)) lastIdx = i;
     });
-    const candidates = eps.slice(lastIdx + 1).filter((e) => isAired(e, now) && !watched.has(e.id));
-    if (!candidates.length) continue;
+    const unwatchedAired = eps.filter((e) => isAired(e, now) && !watched.has(e.id));
+    if (!unwatchedAired.length) continue;
+    const next = unwatchedAired.find((e) => eps.indexOf(e) > lastIdx) ?? unwatchedAired[0];
     // Most recent watch wins; follow/status time only for shows with no dated watches yet.
     const lastWatch = watches.reduce((m, w) => Math.max(m, w.watchedAt), 0);
     const activity = lastWatch > 0 ? lastWatch : entry.updatedAt;
-    out.push({ item: { show, next: candidates[0], remaining: candidates.length }, activity });
+    out.push({ item: { show, next, remaining: unwatchedAired.length }, activity });
   }
   out.sort((a, b) => b.activity - a.activity || a.item.show.title.localeCompare(b.item.show.title));
   return out.map((o) => o.item);

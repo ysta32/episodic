@@ -200,6 +200,26 @@ describe("library core", () => {
     await expect(rate("show", "tvmaze:2", 11)).rejects.toThrow(RangeError);
   });
 
+  it("upNext (D-14): next follows furthest watched, remaining counts all gaps, gap surfaces when nothing after", async () => {
+    const { meta } = stubMeta();
+    await applyImport(bundle(), meta);
+    // Alpha has e1,e2 watched; unwatch e1 -> gap at e1, furthest watched is e2.
+    await unmarkWatched("tvmaze:1:s1e1");
+    let alpha = (await upNext()).find((u) => u.show.id === "tvmaze:1");
+    expect(alpha?.next.id).toBe("tvmaze:1:s1e3"); // after furthest watched (e2), not the e1 gap
+    expect(alpha?.remaining).toBe(2); // e1 + e3 (unaired e4 and special s0 excluded)
+
+    // Watch e3 (furthest): nothing aired after it, e1 still unwatched -> show kept, next = earliest gap.
+    await markWatched(["tvmaze:1:s1e3"]);
+    alpha = (await upNext()).find((u) => u.show.id === "tvmaze:1");
+    expect(alpha?.next.id).toBe("tvmaze:1:s1e1");
+    expect(alpha?.remaining).toBe(1);
+
+    // Fully caught up on aired episodes -> dropped from up next.
+    await markWatched(["tvmaze:1:s1e1"]);
+    expect((await upNext()).some((u) => u.show.id === "tvmaze:1")).toBe(false);
+  });
+
   it("computes stats", async () => {
     const { meta } = stubMeta();
     await applyImport(bundle(), meta);
