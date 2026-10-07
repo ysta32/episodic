@@ -93,7 +93,9 @@ function ToastItem({ toast, onDismiss }: { toast: ToastRecord; onDismiss: (id: n
   const { id, title, description, tone = "neutral", undo, action } = toast;
   const hasAction = Boolean(undo || action);
   const duration = toast.duration ?? (hasAction ? 6000 : 4000);
-  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const paused = hovered || focused;
   const remaining = useRef(duration);
   const acted = useRef(false);
 
@@ -123,11 +125,11 @@ function ToastItem({ toast, onDismiss }: { toast: ToastRecord; onDismiss: (id: n
         "k-enter-up pointer-events-auto flex w-full max-w-[420px] items-start gap-3 rounded-k-md border border-line",
         "bg-surface py-3 pl-4 pr-2 text-text shadow-k-2",
       )}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPaused(false);
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
       }}
       onKeyDown={(e) => {
         if (e.key === "Escape") onDismiss(id);

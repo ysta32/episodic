@@ -27,10 +27,11 @@ export interface TabsProps {
 /** WAI-ARIA tabs with automatic activation, roving tabindex, Home/End. */
 export function Tabs({ items, value, defaultValue, onValueChange, label, className }: TabsProps) {
   const base = useId();
-  const [internal, setInternal] = useState(defaultValue ?? items[0]?.id ?? "");
+  const enabled = items.filter((i) => !i.disabled);
+  const isEnabled = (id: string | undefined) => id !== undefined && enabled.some((i) => i.id === id);
+  const [internal, setInternal] = useState(() => (isEnabled(defaultValue) ? defaultValue : enabled[0]?.id) ?? "");
   const selected = value ?? internal;
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const enabled = items.filter((i) => !i.disabled);
 
   const select = (id: string) => {
     if (value === undefined) setInternal(id);
@@ -47,7 +48,8 @@ export function Tabs({ items, value, defaultValue, onValueChange, label, classNa
     refs.current[items.indexOf(target)]?.focus();
   };
 
-  const active = items.find((i) => i.id === selected) ?? items[0];
+  // Never resolve to a disabled tab: fall back to the first enabled one.
+  const active = enabled.find((i) => i.id === selected) ?? enabled[0];
 
   return (
     <div className={className}>

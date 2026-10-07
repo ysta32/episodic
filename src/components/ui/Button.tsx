@@ -59,11 +59,12 @@ export function Button({
       onClick={loading ? (e) => e.preventDefault() : onClick}
       {...rest}
     >
-      <span className={cx("inline-flex items-center gap-2", loading && "invisible")}>
+      <span className={cx("inline-flex items-center gap-2", loading && "invisible")} aria-hidden={loading || undefined}>
         {leadingIcon && <Icon name={leadingIcon} />}
         {children}
         {trailingIcon && <Icon name={trailingIcon} />}
       </span>
+      {loading && <span className="sr-only">{children}</span>}
       {loading && (
         <span className="absolute inset-0 flex items-center justify-center" aria-hidden>
           <span className="flex gap-1">

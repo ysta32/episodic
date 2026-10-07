@@ -226,3 +226,15 @@ actions, and modals for things that should be inline.
    `text-on-accent`, `text-accent-ink`, `font-display`, `text-k-xl`, `rounded-k-md`, `shadow-k-2`, `ease-k-out`, and
    `duration-(--k-dur-2)`. Helper classes: `k-slate` (mono label), `k-tabular`, `k-skeleton`, `k-enter-up`, `k-stamp`.
 4. Mount `<ToastProvider>` once in the app shell, and mount `<CommandPalette commands={...} />` once per surface.
+
+## Progress log
+
+- **2026-10-07**: Kinescope defined. Covers the research, gaps, standout features (Rewind, Spoiler Shield, Episode
+  Pulse, zero lock-in export), and the tokens (`src/design/tokens.css`), fonts (`src/design/fonts.ts`), custom icon set
+  and 15 primitives in `src/components/ui/`.
+- **2026-10-07**: Review fixes.
+  - Tabs never select a disabled tab.
+  - Toasts pause on hover or focus, tracked separately.
+  - A loading Button keeps its accessible name.
+  - Overlapping dialogs and sheets share one scroll lock.
+  - Segmented accepts the Up and Down arrow keys.

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { cx } from "./cx";
+import { lockScroll } from "./scrollLock";
 import { IconButton } from "./IconButton";
 
 interface BaseProps {
@@ -31,18 +32,16 @@ export function useNativeDialog(open: boolean, onClose: () => void) {
     if (!el) return;
     if (open && !el.open) {
       const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const root = document.documentElement;
-      const prevOverflow = root.style.overflow;
       const onCancel = (e: Event) => {
         e.preventDefault();
         onCloseRef.current();
       };
       el.addEventListener("cancel", onCancel);
       el.showModal();
-      root.style.overflow = "hidden";
+      const unlock = lockScroll();
       return () => {
         el.removeEventListener("cancel", onCancel);
-        root.style.overflow = prevOverflow;
+        unlock();
         if (el.open) el.close();
         if (previous && previous.isConnected) previous.focus();
       };

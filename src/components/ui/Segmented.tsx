@@ -48,7 +48,7 @@ export function Segmented<T extends string>({ options, value, onChange, label, s
             tabIndex={i === current ? 0 : -1}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => {
-              const n = nextIndex(e.key, i, options.length);
+              const n = nextIndex(e.key, i, options.length, "both");
               if (n === null) return;
               e.preventDefault();
               onChange(options[n].value);
