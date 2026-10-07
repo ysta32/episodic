@@ -120,4 +120,51 @@ describe("importTvTime", () => {
     expect(parseDate(undefined)).toBeUndefined();
     expect(parseDate("garbage")).toBeNaN();
   });
+
+  describe("cross-file entity resolution", () => {
+    const csv = (name: string, body: string) => bytesFile(name, strToU8(body));
+
+    it("does not merge distinct shows that share a title but have different TVDB ids", async () => {
+      const b = await importTvTime([
+        csv("tracking-prod-records.csv", "tv_show_name,episode_season_number,episode_number,created_at,s_id\nThe Office,1,1,2010-01-01 00:00:00,73244\nThe Office,1,1,2009-01-01 00:00:00,78107\n"),
+        csv("followed_tv_show.csv", "tv_show_id,tv_show_name\n73244,The Office\n78107,The Office\n"),
+      ]);
+      expect(b.watches).toHaveLength(2);
+      expect(b.watches.map((w) => w.ids.tvdb).sort()).toEqual([73244, 78107]);
+      expect(b.items).toHaveLength(2);
+      expect(b.items.map((i) => i.ids.tvdb).sort()).toEqual([73244, 78107]);
+    });
+
+    it("leaves a title-only row unmerged when its title is ambiguous across ids", async () => {
+      const b = await importTvTime([
+        csv("tracking-prod-records.csv", "tv_show_name,episode_season_number,episode_number,s_id\nThe Office,1,1,73244\nThe Office,1,1,78107\n"),
+        csv("seen_episode.csv", "tv_show_name,episode_season_number,episode_number\nThe Office,1,1\n"),
+      ]);
+      expect(b.watches).toHaveLength(3);
+    });
+
+    it("merges a titled row and an id-only row for the same TVDB show (and a title-only row)", async () => {
+      const b = await importTvTime([
+        csv("tracking-prod-records.csv", "tv_show_name,episode_season_number,episode_number,created_at,s_id,episode_id\n,2,5,2020-05-01 00:00:00,81189,111\nBreaking Bad,2,5,2020-06-01 00:00:00,81189,\n"),
+        csv("seen_episode.csv", "tv_show_name,episode_season_number,episode_number,created_at\nBreaking Bad,2,5,2020-07-01 00:00:00\n"),
+        csv("followed_tv_show.csv", "tv_show_id,tv_show_name\n81189,\n81189,Breaking Bad\n"),
+        csv("episode_vote.csv", "tv_show_id,tv_show_name,episode_season_number,episode_number,vote\n81189,,2,5,4\n,Breaking Bad,2,5,5\n"),
+      ]);
+      expect(b.watches).toHaveLength(1);
+      expect(b.watches[0]).toMatchObject({ title: "Breaking Bad", ids: { tvdb: 81189 }, episodeIds: { tvdb: 111 }, watchedAt: Date.parse("2020-05-01T00:00:00Z") });
+      expect(b.items).toHaveLength(1);
+      expect(b.items[0]).toMatchObject({ title: "Breaking Bad", ids: { tvdb: 81189 } });
+      expect(b.episodeRatings).toHaveLength(1);
+      expect(b.episodeRatings[0]).toMatchObject({ showTitle: "Breaking Bad", showIds: { tvdb: 81189 }, rating: 10 });
+    });
+  });
+
+  it("treats rows in a movie watchlist file without a type as watchlist items", async () => {
+    const b = await importTvTime([
+      bytesFile("movie_watchlist.csv", strToU8("movie_name,imdb_id,release_date,created_at\nDune,tt1160419,2021-10-22,2021-01-01 00:00:00\nArrival,tt2543164,2016-11-11,\n")),
+      bytesFile("movies_to_watch.csv", strToU8("movie_name,type\nHeat,watched\nAlien,\n")),
+    ]);
+    expect(b.items.map((i) => [i.title, i.status]).sort()).toEqual([["Alien", "watchlist"], ["Arrival", "watchlist"], ["Dune", "watchlist"]]);
+    expect(b.watches.map((w) => w.title)).toEqual(["Heat"]);
+  });
 });

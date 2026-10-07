@@ -153,6 +153,13 @@ function classify(base: string, headers: Set<string>): Kind {
   return null;
 }
 
+const WATCHED_TYPES = new Set(["watch", "watched", "seen", "rewatch", "checkin", "check_in", "history"]);
+
+/** File names that hold a movie watchlist (rows default to watchlist when they lack a type/status). */
+export function isWatchlistFile(base: string): boolean {
+  return /(watch_?list|to_?watch|to-watch|want_?to_?watch|planned)/.test(base);
+}
+
 function isWatchlistType(t: string | undefined): boolean {
   if (!t) return false;
   const s = t.toLowerCase().replace(/[\s_-]/g, "");
@@ -186,7 +193,7 @@ function episodeWatch(ctx: Ctx, file: string, r: Row, idKeys: { show: readonly s
   ctx.watches.push(w);
 }
 
-function movieRow(ctx: Ctx, file: string, r: Row, scale: number): void {
+function movieRow(ctx: Ctx, file: string, r: Row, scale: number, defaultWatchlist: boolean): void {
   const title = get(r, COLS.movieTitle) ?? get(r, ["title", "name"]);
   if (!title) return ctx.warn.add(file, "without a movie title");
   const ids: ExternalIds = {};
@@ -200,7 +207,9 @@ function movieRow(ctx: Ctx, file: string, r: Row, scale: number): void {
   const when = date !== undefined && !Number.isNaN(date) ? date : undefined;
   const rawRating = Number(get(r, COLS.rating));
   const rating = normalizeRating(rawRating, scale);
-  if (isWatchlistType(get(r, COLS.type))) {
+  const type = get(r, COLS.type);
+  const watchlist = type === undefined || !(isWatchlistType(type) || WATCHED_TYPES.has(type.toLowerCase())) ? defaultWatchlist : isWatchlistType(type);
+  if (watchlist) {
     const it: ImportedItem = { kind: "movie", title, ids, status: "watchlist" };
     if (year !== undefined) it.year = year;
     if (when !== undefined) it.addedAt = when;
@@ -255,10 +264,10 @@ function ratingRow(ctx: Ctx, file: string, r: Row, scale: number): void {
   ctx.ratings.push({ showIds, showTitle: title ?? `tvdb:${tvdb}`, season, number, rating });
 }
 
-function trackingRow(ctx: Ctx, file: string, r: Row, scale: number): void {
+function trackingRow(ctx: Ctx, file: string, r: Row, scale: number, defaultWatchlist: boolean): void {
   const entity = (get(r, COLS.entity) ?? "").toLowerCase();
   if (entity === "movie" || (entity === "" && get(r, COLS.movieTitle) && !get(r, COLS.showTitle))) {
-    return movieRow(ctx, file, r, scale);
+    return movieRow(ctx, file, r, scale, defaultWatchlist);
   }
   if (entity === "episode" || (entity === "" && get(r, COLS.season) !== undefined)) {
     return episodeWatch(ctx, file, r, { show: COLS.showTvdb });
@@ -269,11 +278,82 @@ function trackingRow(ctx: Ctx, file: string, r: Row, scale: number): void {
 
 const titleKey = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ");
 
-function idKey(kind: string, title: string, ids: ExternalIds): string {
-  // Prefer the title so rows from different files (some lacking ids) collide; fall back to ids.
-  if (!title.startsWith("tvdb:")) return `${kind}|t:${titleKey(title)}`;
-  return `${kind}|tvdb:${ids.tvdb ?? ""}`;
+type Entity = "show" | "movie";
+type KeyFn = (entity: Entity, title: string, ids: ExternalIds) => string;
+
+const isPlaceholderTitle = (t: string) => /^tvdb:\d+$/.test(t);
+
+function idNodes(entity: Entity, ids: ExternalIds): string[] {
+  const out: string[] = [];
+  if (ids.tvdb !== undefined) out.push(`${entity}|tvdb:${ids.tvdb}`);
+  if (ids.imdb !== undefined) out.push(`${entity}|imdb:${ids.imdb}`);
+  return out;
 }
+
+/**
+ * Cross-file entity resolution. Ids win: records sharing any id (tvdb/imdb, linked transitively when one
+ * record carries both) are one entity, even if their titles differ. Records with ids never merge on title
+ * alone, so same-titled shows with different ids stay distinct. A title-only record joins the id entity
+ * seen with that normalized title only when exactly one exists; otherwise it keys by title.
+ */
+class Resolver {
+  private parent = new Map<string, string>();
+  private titleRoots = new Map<string, Set<string>>();
+  private rootTitle = new Map<string, string>();
+  private pending: { entity: Entity; title: string; ids: ExternalIds }[] = [];
+
+  private find(x: string): string {
+    let r = x;
+    while (this.parent.has(r) && this.parent.get(r) !== r) r = this.parent.get(r) as string;
+    if (!this.parent.has(r)) this.parent.set(r, r);
+    let c = x;
+    while (c !== r) {
+      const next = this.parent.get(c) as string;
+      this.parent.set(c, r);
+      c = next;
+    }
+    return r;
+  }
+
+  add(entity: Entity, title: string, ids: ExternalIds): void {
+    const nodes = idNodes(entity, ids);
+    if (nodes.length === 0) return;
+    const r0 = this.find(nodes[0]);
+    for (const n of nodes.slice(1)) {
+      const rn = this.find(n);
+      if (rn !== r0) this.parent.set(rn, r0);
+    }
+    this.pending.push({ entity, title, ids });
+  }
+
+  /** Finalize after all add() calls; returns the key function. */
+  build(): { key: KeyFn; title: (entity: Entity, title: string, ids: ExternalIds) => string } {
+    for (const p of this.pending) {
+      const root = this.find(idNodes(p.entity, p.ids)[0]);
+      if (isPlaceholderTitle(p.title)) continue;
+      const tk = `${p.entity}|${titleKey(p.title)}`;
+      const set = this.titleRoots.get(tk) ?? new Set<string>();
+      set.add(root);
+      this.titleRoots.set(tk, set);
+      if (!this.rootTitle.has(root)) this.rootTitle.set(root, p.title);
+    }
+    const key: KeyFn = (entity, title, ids) => {
+      const nodes = idNodes(entity, ids);
+      if (nodes.length > 0) return `id:${this.find(nodes[0])}`;
+      const roots = this.titleRoots.get(`${entity}|${titleKey(title)}`);
+      if (roots && roots.size === 1) return `id:${[...roots][0]}`;
+      return `${entity}|t:${titleKey(title)}`;
+    };
+    const title = (entity: Entity, t: string, ids: ExternalIds) => {
+      if (!isPlaceholderTitle(t)) return t;
+      const nodes = idNodes(entity, ids);
+      return (nodes.length > 0 && this.rootTitle.get(this.find(nodes[0]))) || t;
+    };
+    return { key, title };
+  }
+}
+
+const entityOf = (k: "episode" | "movie" | "show"): Entity => (k === "movie" ? "movie" : "show");
 
 function earlier(a: number | undefined, b: number | undefined): boolean {
   if (a === undefined) return false;
@@ -281,10 +361,10 @@ function earlier(a: number | undefined, b: number | undefined): boolean {
   return a < b;
 }
 
-function dedupeWatches(watches: ImportedWatch[]): ImportedWatch[] {
+function dedupeWatches(watches: ImportedWatch[], idKey: KeyFn): ImportedWatch[] {
   const out = new Map<string, ImportedWatch>();
   for (const w of watches) {
-    const base = idKey(w.kind, w.title, w.ids);
+    const base = idKey(entityOf(w.kind), w.title, w.ids);
     const key = w.kind === "episode" ? `${base}|s${w.season}e${w.number}` : `${base}|${w.watchedAt ?? "?"}`;
     const prev = out.get(key);
     if (!prev) {
@@ -296,6 +376,7 @@ function dedupeWatches(watches: ImportedWatch[]): ImportedWatch[] {
     keep.ids = { ...other.ids, ...keep.ids };
     if (other.episodeIds || keep.episodeIds) keep.episodeIds = { ...other.episodeIds, ...keep.episodeIds };
     if (keep.year === undefined && other.year !== undefined) keep.year = other.year;
+    if (isPlaceholderTitle(keep.title) && !isPlaceholderTitle(other.title)) keep.title = other.title;
     out.set(key, keep);
   }
   return [...out.values()];
@@ -303,7 +384,7 @@ function dedupeWatches(watches: ImportedWatch[]): ImportedWatch[] {
 
 const STATUS_RANK: Record<string, number> = { watchlist: 0, watching: 1, completed: 2, paused: 3, dropped: 4 };
 
-function dedupeItems(items: ImportedItem[]): ImportedItem[] {
+function dedupeItems(items: ImportedItem[], idKey: KeyFn): ImportedItem[] {
   const out = new Map<string, ImportedItem>();
   for (const it of items) {
     const key = idKey(it.kind, it.title, it.ids);
@@ -316,19 +397,21 @@ function dedupeItems(items: ImportedItem[]): ImportedItem[] {
     if (it.status && (!prev.status || STATUS_RANK[it.status] > STATUS_RANK[prev.status])) prev.status = it.status;
     if (prev.rating === undefined && it.rating !== undefined) prev.rating = it.rating;
     if (it.favorite) prev.favorite = true;
+    if (isPlaceholderTitle(prev.title) && !isPlaceholderTitle(it.title)) prev.title = it.title;
     if (prev.year === undefined && it.year !== undefined) prev.year = it.year;
     if (earlier(it.addedAt, prev.addedAt)) prev.addedAt = it.addedAt;
   }
   return [...out.values()];
 }
 
-function dedupeRatings(ratings: ImportedEpisodeRating[]): ImportedEpisodeRating[] {
+function dedupeRatings(ratings: ImportedEpisodeRating[], idKey: KeyFn): ImportedEpisodeRating[] {
   // Later rows win (a re-vote supersedes an earlier one).
   const out = new Map<string, ImportedEpisodeRating>();
   for (const r of ratings) {
     const key = `${idKey("show", r.showTitle, r.showIds)}|s${r.season}e${r.number}`;
     const prev = out.get(key);
-    out.set(key, prev ? { ...r, showIds: { ...prev.showIds, ...r.showIds } } : r);
+    const showTitle = isPlaceholderTitle(r.showTitle) && prev && !isPlaceholderTitle(prev.showTitle) ? prev.showTitle : r.showTitle;
+    out.set(key, prev ? { ...r, showTitle, showIds: { ...prev.showIds, ...r.showIds } } : r);
   }
   return [...out.values()];
 }
@@ -351,10 +434,11 @@ export const importTvTime: Importer = async (files) => {
     recognized++;
     if (errors > 0) bundle.warnings.push(`${base}: ${errors} CSV parse error${errors === 1 ? "" : "s"}`);
     const scale = ratingScale(rows);
+    const defaultWatchlist = isWatchlistFile(base);
     for (const r of rows) {
       switch (kind) {
         case "tracking":
-          trackingRow(ctx, base, r, scale);
+          trackingRow(ctx, base, r, scale, defaultWatchlist);
           break;
         case "episodes":
           episodeWatch(ctx, base, r, { show: COLS.showTvdb });
@@ -363,7 +447,7 @@ export const importTvTime: Importer = async (files) => {
           showRow(ctx, base, r, scale);
           break;
         case "movies":
-          movieRow(ctx, base, r, scale);
+          movieRow(ctx, base, r, scale, defaultWatchlist);
           break;
         case "ratings":
           ratingRow(ctx, base, r, scale);
@@ -372,9 +456,14 @@ export const importTvTime: Importer = async (files) => {
     }
   }
   if (recognized === 0) bundle.warnings.push("No TV Time export files were recognized (expected e.g. seen_episode.csv or tracking-prod-records.csv).");
-  bundle.watches = dedupeWatches(ctx.watches);
-  bundle.items = dedupeItems(ctx.items);
-  bundle.episodeRatings = dedupeRatings(ctx.ratings);
+  const resolver = new Resolver();
+  for (const w of ctx.watches) resolver.add(entityOf(w.kind), w.title, w.ids);
+  for (const it of ctx.items) resolver.add(it.kind, it.title, it.ids);
+  for (const r of ctx.ratings) resolver.add("show", r.showTitle, r.showIds);
+  const { key, title } = resolver.build();
+  bundle.watches = dedupeWatches(ctx.watches, key).map((w) => ({ ...w, title: title(entityOf(w.kind), w.title, w.ids) }));
+  bundle.items = dedupeItems(ctx.items, key).map((it) => ({ ...it, title: title(it.kind, it.title, it.ids) }));
+  bundle.episodeRatings = dedupeRatings(ctx.ratings, key).map((r) => ({ ...r, showTitle: title("show", r.showTitle, r.showIds) }));
   bundle.warnings.push(...ctx.warn.list());
   return bundle;
 };
