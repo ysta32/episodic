@@ -6,8 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CommandPalette, cx, Dialog, Icon, Kbd, type IconName, type PaletteCommand } from "@/components/ui";
 import { db } from "@/lib/db";
-import { updateSettings } from "@/lib/lists";
-import type { TrackStatus } from "@/lib/types";
+import { getSettings, updateSettings } from "@/lib/lists";
+import type { Settings, TrackStatus } from "@/lib/types";
 import { mediaHref, useOnline } from "./useMeta";
 
 interface NavItem {
@@ -50,6 +50,34 @@ function isTypingTarget(target: EventTarget | null): boolean {
     return !["checkbox", "radio", "button", "submit", "reset", "range"].includes(type);
   }
   return target.getAttribute("role") === "slider" || target.getAttribute("role") === "combobox";
+}
+
+const THEME_KEY = "episodic:theme";
+
+/**
+ * Apply a theme to <html> and mirror it to localStorage, which the root layout's pre-paint script reads
+ * ("light" | "dark"; absent = follow the system).
+ */
+export function applyTheme(theme: Settings["theme"]): void {
+  const root = document.documentElement;
+  if (theme === "system") delete root.dataset.theme;
+  else root.dataset.theme = theme;
+  try {
+    if (theme === "system") window.localStorage.removeItem(THEME_KEY);
+    else window.localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Storage can be unavailable (private mode, quota). The theme still applies for this page and is
+    // persisted in IndexedDB settings, which the shell re-applies on every load.
+  }
+}
+
+function storedTheme(): Settings["theme"] {
+  try {
+    const v = window.localStorage.getItem(THEME_KEY);
+    return v === "light" || v === "dark" ? v : "system";
+  } catch {
+    return "system";
+  }
 }
 
 function resolvedTheme(): "light" | "dark" {
@@ -261,7 +289,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const toggleTheme = useCallback(async () => {
     const next = resolvedTheme() === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
+    applyTheme(next);
     await updateSettings({ theme: next });
   }, []);
 
@@ -301,6 +329,16 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [router, focusSearch, toggleTheme, paletteOpen, helpOpen]);
+
+  // Settings (IndexedDB) are the source of truth; heal the pre-paint localStorage mirror if it drifted,
+  // e.g. after a theme change on Profile, a backup restore, or cleared site storage.
+  const themeSetting = useLiveQuery(async () => (await getSettings()).theme, []);
+  useEffect(() => {
+    if (!themeSetting) return;
+    const current = document.documentElement.dataset.theme;
+    const applied = current === "light" || current === "dark" ? current : "system";
+    if (themeSetting !== storedTheme() || themeSetting !== applied) applyTheme(themeSetting);
+  }, [themeSetting]);
 
   const library = useLiveQuery(() => db().library.orderBy("updatedAt").reverse().limit(300).toArray(), []);
 

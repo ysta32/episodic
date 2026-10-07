@@ -10,9 +10,12 @@ export const metadata: Metadata = {
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <ToastProvider>
-      <AppShell>{children}</AppShell>
-      <RegisterSW />
-    </ToastProvider>
+    // Toasts render as a direct <section> child of this wrapper; below md, lift them above the bottom tab bar.
+    <div className="[--toast-offset:0px] max-md:[--toast-offset:calc(4rem+env(safe-area-inset-bottom))] [&>section[aria-label=Notifications]]:bottom-(--toast-offset)">
+      <ToastProvider>
+        <AppShell>{children}</AppShell>
+        <RegisterSW />
+      </ToastProvider>
+    </div>
   );
 }
