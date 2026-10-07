@@ -1,0 +1,10 @@
+{
+  "shows":[
+    {"show":{"title":"Orbit","year":2020,"ids":{"simkl":101,"tvdb":201,"tmdb":301,"imdb":"tt0000101"}},"status":"watching","user_rating":8,"seasons":[{"number":0,"episodes":[{"number":1,"watched_at":"2024-02-01T10:00:00Z"}]},{"number":1,"episodes":[{"number":2,"watched_at":"2024-02-02T10:00:00Z"}]}]},
+    {"show":{"title":"Later","ids":{"simkl":102}},"status":"plantowatch"},
+    {"show":{"title":"Paused","ids":{"simkl":103}},"status":"hold"},
+    {"show":{"title":"Stopped","ids":{"simkl":104}},"status":"dropped"}
+  ],
+  "anime":[{"show":{"title":"Animation","ids":{"simkl":105}},"status":"completed","user_rating":10}],
+  "movies":[{"movie":{"title":"Film","year":2021,"ids":{"simkl":106,"imdb":"tt0000106"}},"status":"completed","user_rating":7,"last_watched_at":"2024-03-01T12:00:00Z"}]
+}
