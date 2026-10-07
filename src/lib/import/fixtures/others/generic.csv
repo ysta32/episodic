@@ -1,0 +1,6 @@
+name,kind,year,imdb_id,tmdb,season,episode,watched_at,rating,status
+Breaking Bad,show,2008,tt0903747,,1,1,2024-01-01,,
+Breaking Bad,show,2008,tt0903747,,1,2,2024-01-02,,
+Heat,movie,1995,tt0113277,949,,,2024-01-03,4.5,completed
+Dune,film,2021,,438631,,,,80,watchlist
+,,,,,,,,,
