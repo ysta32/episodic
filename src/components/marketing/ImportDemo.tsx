@@ -52,15 +52,15 @@ function summarize(b: ImportBundle, ms: number): Summary {
   }
   const showTitles = new Set(perShow.keys());
   // A rated or watchlisted movie can appear both as an item and as a watch: count each film once.
-  const movieKeys = new Set<string>();
-  const movieKey = (m: { title: string; year?: number; ids: ImportedItem["ids"] }) =>
-    m.ids.imdb ? `imdb:${m.ids.imdb}` : m.ids.tmdb !== undefined ? `tmdb:${m.ids.tmdb}` : `t:${m.title.toLowerCase()}|${m.year ?? ""}`;
+  // Records that share any external id are the same film (union-find over ids); title + year is
+  // only a fallback for records that carry no ids at all.
+  const movieRecs: { title: string; year?: number; ids: ImportedItem["ids"] }[] = [];
   for (const i of b.items) {
     if (i.kind === "show") showTitles.add(i.title);
-    else movieKeys.add(movieKey(i));
+    else movieRecs.push(i);
   }
-  for (const w of b.watches) if (w.kind === "movie") movieKeys.add(movieKey(w));
-  const movies = movieKeys.size;
+  for (const w of b.watches) if (w.kind === "movie") movieRecs.push(w);
+  const movies = countDistinct(movieRecs);
   const top = [...perShow].sort((a, z) => z[1] - a[1]).slice(0, 3).map(([title, count]) => ({ title, count }));
   return {
     shows: showTitles.size,
@@ -74,6 +74,35 @@ function summarize(b: ImportBundle, ms: number): Summary {
     warnings: b.warnings.length,
     ms,
   };
+}
+
+const ID_KEYS = ["imdb", "tmdb", "tvdb", "trakt", "simkl", "tvmaze"] as const;
+
+/** Number of distinct films: records sharing any id are merged; id-less records fall back to title + year. */
+function countDistinct(recs: { title: string; year?: number; ids: ImportedItem["ids"] }[]): number {
+  const parent = recs.map((_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  };
+  const owner = new Map<string, number>();
+  recs.forEach((r, i) => {
+    const keys = ID_KEYS.filter((k) => r.ids[k] !== undefined).map((k) => `${k}:${r.ids[k]}`);
+    if (keys.length === 0) keys.push(`title:${r.title.trim().toLowerCase()}|${r.year ?? ""}`);
+    for (const key of keys) {
+      const j = owner.get(key);
+      if (j === undefined) owner.set(key, i);
+      else parent[find(i)] = find(j);
+    }
+  });
+  let roots = 0;
+  recs.forEach((_, i) => {
+    if (find(i) === i) roots++;
+  });
+  return roots;
 }
 
 function memoryFile(name: string, text: string): InputFile {
