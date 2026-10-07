@@ -35,6 +35,7 @@ export default function UpNextPage() {
   const [failed, setFailed] = useState(false);
   const listRef = useRef<HTMLUListElement>(null);
   const timers = useRef<Map<string, number>>(new Map());
+  const inFlight = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const t = timers.current;
@@ -58,10 +59,13 @@ export default function UpNextPage() {
   const onWatched = useCallback(
     async (item: UpNextItem) => {
       const id = item.next.id;
+      if (inFlight.current.has(id)) return;
+      inFlight.current.add(id);
       setFailed(false);
       setStamped(id);
       // Optimistic: let the phosphor stamp play, then drop the card while the write lands.
       const at = Date.now();
+      cancelTimer(id);
       timers.current.set(id, window.setTimeout(() => { timers.current.delete(id); hide(id, true); }, 260));
       try {
         await markWatched([id], at);
@@ -83,6 +87,7 @@ export default function UpNextPage() {
         setFailed(true);
         toast({ title: "Couldn't save that", description: "Nothing changed. Your library is fine.", tone: "danger" });
       } finally {
+        inFlight.current.delete(id);
         setStamped((s) => (s === id ? null : s));
       }
     },
